@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import activity, auth, docker, health, jobs, repos
+from app.routers import activity, auth, docker, health, jobs, repos, settings
 from app.services.users import ensure_seed_users
 
 
@@ -34,3 +34,4 @@ app.include_router(repos.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(docker.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")

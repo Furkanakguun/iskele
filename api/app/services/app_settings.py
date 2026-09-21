@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from app.config import Settings, get_settings
+from app.db import get_connection, init_db
+
+DEFAULT_REMOTE = "registry.example.com/nimbus"
+DEFAULT_IMAGE_VERSION = "2.3.1"
+DEFAULT_IMAGE_PREFIX = "nimbus-"
+
+_KEYS = (
+    "git_base_url",
+    "git_token",
+    "docker_host",
+    "remote_registry",
+    "image_version",
+    "image_prefix",
+)
+
+
+def _seed_defaults(settings: Settings) -> None:
+    init_db(settings.database_path)
+    defaults = {
+        "git_base_url": settings.git_base_url or "https://git.example.local",
+        "git_token": settings.git_token or "",
+        "docker_host": settings.docker_host or "localhost",
+        "remote_registry": DEFAULT_REMOTE,
+        "image_version": DEFAULT_IMAGE_VERSION,
+        "image_prefix": DEFAULT_IMAGE_PREFIX,
+    }
+    with get_connection(settings.database_path) as conn:
+        for key, value in defaults.items():
+            row = conn.execute(
+                "SELECT 1 FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+
+
+def _load_map(settings: Optional[Settings] = None) -> Dict[str, str]:
+    settings = settings or get_settings()
+    _seed_defaults(settings)
+    with get_connection(settings.database_path) as conn:
+        rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+def get_app_settings(settings: Optional[Settings] = None) -> Dict[str, Any]:
+    data = _load_map(settings)
+    token = data.get("git_token", "")
+    return {
+        "git_base_url": data.get("git_base_url", ""),
+        "git_token_set": bool(token.strip()),
+        "docker_host": data.get("docker_host", "localhost"),
+        "remote_registry": data.get("remote_registry", DEFAULT_REMOTE),
+        "image_version": data.get("image_version", DEFAULT_IMAGE_VERSION),
+        "image_prefix": data.get("image_prefix", DEFAULT_IMAGE_PREFIX),
+    }
+
+
+def update_app_settings(
+    patch: Dict[str, Any],
+    settings: Optional[Settings] = None,
+) -> Dict[str, Any]:
+    settings = settings or get_settings()
+    _seed_defaults(settings)
+    allowed = {
+        "git_base_url",
+        "docker_host",
+        "remote_registry",
+        "image_version",
+        "image_prefix",
+        "git_token",
+    }
+    with get_connection(settings.database_path) as conn:
+        for key, value in patch.items():
+            if key not in allowed:
+                continue
+            if key == "git_token":
+                # Empty string means leave unchanged; None-like skip
+                if value is None:
+                    continue
+                if value == "":
+                    continue
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, str(value)),
+            )
+    return get_app_settings(settings)
