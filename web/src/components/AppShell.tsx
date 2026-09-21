@@ -8,7 +8,7 @@ const items = [
   { to: '/repos', label: 'Repos', icon: '▣' },
   { to: '/activity', label: 'Activity', icon: '☰' },
   { to: '/users', label: 'Users', icon: '☺', admin: true },
-  { to: '/settings', label: 'Settings', icon: '⚙', admin: true },
+  { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
 function greeting() {

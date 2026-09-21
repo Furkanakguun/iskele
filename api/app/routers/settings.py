@@ -89,7 +89,7 @@ def put_settings(
 
 @router.get("/storage", response_model=StorageOut)
 def get_storage(
-    _: dict = Depends(require_admin),
+    _: dict = Depends(require_user),
     settings: Settings = Depends(get_settings),
 ) -> StorageOut:
     cfg = settings_service.get_app_settings(settings)

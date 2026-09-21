@@ -70,7 +70,7 @@ export function SettingsPage() {
   const isAdmin = user?.role === 'admin'
 
   const loadStorage = useCallback(async () => {
-    if (!user?.token || !isAdmin) return
+    if (!user?.token) return
     setStorageLoading(true)
     try {
       const data = await api<StorageOut>('/api/settings/storage', {
@@ -85,10 +85,10 @@ export function SettingsPage() {
     } finally {
       setStorageLoading(false)
     }
-  }, [isAdmin, user?.token])
+  }, [user?.token])
 
   useEffect(() => {
-    if (!isAdmin || !user?.token) return
+    if (!user?.token) return
     void (async () => {
       try {
         const data = await api<SettingsOut>('/api/settings', {
@@ -108,7 +108,7 @@ export function SettingsPage() {
         setLoading(false)
       }
     })()
-  }, [isAdmin, user?.token])
+  }, [user?.token])
 
   useEffect(() => {
     void loadStorage()
@@ -151,7 +151,7 @@ export function SettingsPage() {
     }
   }
 
-  if (!isAdmin) return <Navigate to="/" replace />
+  if (!user) return <Navigate to="/login" replace />
 
   const diskPct =
     storage && storage.disk_total_bytes > 0
@@ -303,9 +303,9 @@ export function SettingsPage() {
         )}
       </section>
 
-      {loading ? (
-        <p className="text-muted">Loading…</p>
-      ) : (
+      {isAdmin && loading && <p className="text-muted">Loading…</p>}
+
+      {isAdmin && !loading && (
         <form onSubmit={save} className="card space-y-4 p-5">
           <h2 className="text-sm font-semibold">Connection</h2>
           <label className="block text-[12px] text-muted">

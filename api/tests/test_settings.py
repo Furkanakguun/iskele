@@ -19,9 +19,10 @@ def test_tester_cannot_put_settings(client, auth_headers):
     assert res.status_code == 403
 
 
-def test_tester_cannot_read_storage(client, auth_headers):
+def test_tester_can_read_storage(client, auth_headers):
     res = client.get("/api/settings/storage", headers=auth_headers)
-    assert res.status_code == 403
+    assert res.status_code == 200
+    assert "disk_free_bytes" in res.json()
 
 
 def test_settings_get_and_put(client, admin_headers):
