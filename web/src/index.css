@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-2: #1c1c1c;
+  --color-border: #2a2a2a;
+  --color-muted: #8a8a8a;
+  --color-text: #f2f2f2;
+  --color-lime: #c8f542;
+  --color-lime-dim: #8fb82e;
+  --color-danger: #f07167;
+  --color-warn: #e8b84a;
+  --color-info: #6cb6ff;
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-lime);
+  color: #0a0a0a;
+}
+
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.spark {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(200, 245, 66, 0.08) 100%
+  );
+}
