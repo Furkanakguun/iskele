@@ -12,6 +12,7 @@ import { ModulesPage } from './pages/ModulesPage'
 import { RepoDetailPage } from './pages/RepoDetailPage'
 import { ReposPage } from './pages/ReposPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { UsersPage } from './pages/UsersPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth()
@@ -50,6 +51,7 @@ export default function App() {
         />
         <Route path="/jobs/:jobId" element={<JobLogPage />} />
         <Route path="/activity" element={<ActivityPage />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/isler/:jobId" element={<LegacyJobRedirect />} />
         <Route path="/aktivite" element={<Navigate to="/activity" replace />} />

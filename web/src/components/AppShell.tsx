@@ -7,6 +7,7 @@ const items = [
   { to: '/', label: 'Dashboard', icon: '⌂', end: true },
   { to: '/repos', label: 'Repos', icon: '▣' },
   { to: '/activity', label: 'Activity', icon: '☰' },
+  { to: '/users', label: 'Users', icon: '☺', admin: true },
   { to: '/settings', label: 'Settings', icon: '⚙', admin: true },
 ]
 
@@ -26,11 +27,13 @@ export function AppShell() {
     ? 'Repos'
     : loc.pathname.startsWith('/activity')
       ? 'Activity'
-      : loc.pathname.startsWith('/settings')
-        ? 'Settings'
-        : loc.pathname.startsWith('/jobs')
-          ? 'Job'
-          : 'Dashboard'
+      : loc.pathname.startsWith('/users')
+        ? 'Users'
+        : loc.pathname.startsWith('/settings')
+          ? 'Settings'
+          : loc.pathname.startsWith('/jobs')
+            ? 'Job'
+            : 'Dashboard'
 
   return (
     <div className="flex min-h-full">
