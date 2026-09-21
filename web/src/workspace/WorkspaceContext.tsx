@@ -2,16 +2,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
+import { useAuth } from '../auth/AuthContext'
+import { api } from '../lib/api'
 import {
-  BRANCHES as SEED_BRANCHES,
-  REPOS as SEED_REPOS,
-  type Branch,
-  type Repo,
-} from '../mock/data'
+  mapBranch,
+  mapRepo,
+  type ApiBranch,
+  type ApiRepo,
+} from '../lib/mappers'
+import type { Branch, Repo } from '../mock/data'
 
 export type AddRepoInput = {
   projectKey: string
@@ -28,64 +32,41 @@ type WorkspaceContextValue = {
   branch: string
   branchMeta: Branch | undefined
   branches: Branch[]
+  loading: boolean
+  error: string | null
+  refresh: () => Promise<void>
   setRepoId: (id: string) => void
   setBranch: (name: string) => void
-  addRepo: (input: AddRepoInput) => { ok: true; repo: Repo } | { ok: false; error: string }
-  removeRepo: (id: string) => void
+  addRepo: (
+    input: AddRepoInput,
+  ) => Promise<{ ok: true; repo: Repo } | { ok: false; error: string }>
+  removeRepo: (id: string) => Promise<void>
   getBranches: (repoId: string) => Branch[]
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
-const WS_KEY = 'iskele.workspace.v2'
-const REPOS_KEY = 'iskele.repos.v2'
-const BRANCHES_KEY = 'iskele.branches.v2'
+const WS_KEY = 'iskele.workspace.v3'
 
 type WsStored = { repoId: string; branch: string }
 
-function readJson<T>(key: string): T | null {
+function readWs(): WsStored | null {
   try {
-    const raw = localStorage.getItem(key)
+    const raw = localStorage.getItem(WS_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as T
+    return JSON.parse(raw) as WsStored
   } catch {
     return null
   }
 }
 
-function repoIdFrom(projectKey: string, slug: string) {
-  return `repo-${projectKey.toLowerCase()}-${slug.toLowerCase()}`.replace(
-    /[^a-z0-9-]/g,
-    '-',
-  )
-}
-
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [repos, setRepos] = useState<Repo[]>(
-    () => readJson<Repo[]>(REPOS_KEY) ?? [...SEED_REPOS],
-  )
-  const [branchesMap, setBranchesMap] = useState<Record<string, Branch[]>>(
-    () => readJson<Record<string, Branch[]>>(BRANCHES_KEY) ?? { ...SEED_BRANCHES },
-  )
-
-  const stored = readJson<WsStored>(WS_KEY)
-  const initialRepo =
-    repos.find((r) => r.id === stored?.repoId) ?? repos[0] ?? SEED_REPOS[0]
-
-  const [repoId, setRepoIdState] = useState(initialRepo?.id ?? '')
-  const [branch, setBranchState] = useState(() => {
-    const list = branchesMap[initialRepo?.id ?? ''] ?? []
-    if (stored?.branch && list.some((b) => b.name === stored.branch)) {
-      return stored.branch
-    }
-    return initialRepo?.defaultBranch ?? 'main'
-  })
-
-  const repo = repos.find((r) => r.id === repoId) ?? repos[0]
-  const branches = repo ? branchesMap[repo.id] ?? [] : []
-  const safeBranch = branches.some((b) => b.name === branch)
-    ? branch
-    : repo?.defaultBranch ?? branch
-  const branchMeta = branches.find((b) => b.name === safeBranch)
+  const { user } = useAuth()
+  const [repos, setRepos] = useState<Repo[]>([])
+  const [branchesMap, setBranchesMap] = useState<Record<string, Branch[]>>({})
+  const [repoId, setRepoIdState] = useState('')
+  const [branch, setBranchState] = useState('development')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const persistWs = useCallback((nextRepoId: string, nextBranch: string) => {
     localStorage.setItem(
@@ -94,29 +75,88 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  const persistRepos = useCallback((next: Repo[]) => {
-    localStorage.setItem(REPOS_KEY, JSON.stringify(next))
-  }, [])
+  const loadBranches = useCallback(
+    async (id: string, token: string) => {
+      const rows = await api<ApiBranch[]>(`/api/repos/${id}/branches`, { token })
+      const mapped = rows.map(mapBranch)
+      setBranchesMap((prev) => ({ ...prev, [id]: mapped }))
+      return mapped
+    },
+    [],
+  )
 
-  const persistBranches = useCallback((next: Record<string, Branch[]>) => {
-    localStorage.setItem(BRANCHES_KEY, JSON.stringify(next))
-  }, [])
+  const refresh = useCallback(async () => {
+    if (!user?.token) {
+      setRepos([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const rows = await api<ApiRepo[]>('/api/repos', { token: user.token })
+      const mapped = rows.map(mapRepo)
+      setRepos(mapped)
+
+      const stored = readWs()
+      const active =
+        mapped.find((r) => r.id === (stored?.repoId || repoId)) ?? mapped[0]
+      if (!active) {
+        setRepoIdState('')
+        setError(null)
+        setLoading(false)
+        return
+      }
+
+      setRepoIdState(active.id)
+      const blist = await loadBranches(active.id, user.token)
+      const nextBranch =
+        stored?.branch && blist.some((b) => b.name === stored.branch)
+          ? stored.branch
+          : active.defaultBranch
+      setBranchState(nextBranch)
+      persistWs(active.id, nextBranch)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load repos')
+    } finally {
+      setLoading(false)
+    }
+  }, [loadBranches, persistWs, repoId, user?.token])
+
+  useEffect(() => {
+    void refresh()
+  }, [user?.token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const repo = repos.find((r) => r.id === repoId) ?? repos[0]
+  const branches = repo ? branchesMap[repo.id] ?? [] : []
+  const safeBranch = branches.some((b) => b.name === branch)
+    ? branch
+    : repo?.defaultBranch ?? branch
+  const branchMeta = branches.find((b) => b.name === safeBranch)
 
   const setRepoId = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const next = repos.find((r) => r.id === id) ?? repos[0]
-      if (!next) return
+      if (!next || !user?.token) return
       setRepoIdState(next.id)
-      setBranchState(next.defaultBranch)
-      persistWs(next.id, next.defaultBranch)
+      let blist = branchesMap[next.id]
+      if (!blist) {
+        blist = await loadBranches(next.id, user.token)
+      }
+      const nextBranch = next.defaultBranch
+      setBranchState(nextBranch)
+      persistWs(next.id, nextBranch)
+      if (!blist.some((b) => b.name === nextBranch) && user.token) {
+        await loadBranches(next.id, user.token)
+      }
     },
-    [persistWs, repos],
+    [branchesMap, loadBranches, persistWs, repos, user?.token],
   )
 
   const setBranch = useCallback(
     (name: string) => {
       setBranchState(name)
-      persistWs(repoId, name)
+      if (repoId) persistWs(repoId, name)
     },
     [persistWs, repoId],
   )
@@ -127,109 +167,91 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   )
 
   const addRepo = useCallback(
-    (input: AddRepoInput) => {
-      const projectKey = input.projectKey.trim().toUpperCase()
-      const slug = input.slug.trim().toLowerCase()
-      if (!projectKey || !slug) {
-        return { ok: false as const, error: 'Project key and slug are required.' }
+    async (input: AddRepoInput) => {
+      if (!user?.token) return { ok: false as const, error: 'Not signed in' }
+      try {
+        const created = await api<ApiRepo>('/api/repos', {
+          method: 'POST',
+          token: user.token,
+          body: JSON.stringify({
+            project_key: input.projectKey,
+            slug: input.slug,
+            name: input.name ?? '',
+            default_branch: input.defaultBranch,
+            description: input.description ?? '',
+            branches: (input.branches ?? []).map((b) => ({
+              name: b.name,
+              short_sha: b.shortSha,
+              commit_message: b.commitMessage,
+              updated_at: b.updatedAt,
+              dockerfile_count: b.dockerfileCount,
+            })),
+          }),
+        })
+        const mapped = mapRepo(created)
+        await refresh()
+        setRepoIdState(mapped.id)
+        setBranchState(mapped.defaultBranch)
+        persistWs(mapped.id, mapped.defaultBranch)
+        return { ok: true as const, repo: mapped }
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : 'Add repo failed',
+        }
       }
-      const id = repoIdFrom(projectKey, slug)
-      if (repos.some((r) => r.id === id || (r.projectKey === projectKey && r.slug === slug))) {
-        return { ok: false as const, error: 'This repo is already added.' }
-      }
-
-      const defaultBranch = input.defaultBranch.trim() || 'main'
-      const discovered =
-        input.branches && input.branches.length > 0
-          ? input.branches
-          : [
-              {
-                name: defaultBranch,
-                shortSha: 'pending',
-                commitMessage: 'Not scanned yet (mock)',
-                updatedAt: new Date().toISOString(),
-                dockerfileCount: 0,
-              },
-            ]
-
-      const nextRepo: Repo = {
-        id,
-        projectKey,
-        slug,
-        name: input.name?.trim() || slug,
-        description:
-          input.description?.trim() ||
-          `Git ${projectKey}/${slug} — added (mock)`,
-        defaultBranch,
-      }
-
-      const nextRepos = [...repos, nextRepo]
-      const nextBranches = { ...branchesMap, [id]: discovered }
-      setRepos(nextRepos)
-      setBranchesMap(nextBranches)
-      persistRepos(nextRepos)
-      persistBranches(nextBranches)
-      setRepoIdState(id)
-      setBranchState(defaultBranch)
-      persistWs(id, defaultBranch)
-
-      return { ok: true as const, repo: nextRepo }
     },
-    [branchesMap, persistBranches, persistRepos, persistWs, repos],
+    [persistWs, refresh, user?.token],
   )
 
   const removeRepo = useCallback(
-    (id: string) => {
-      if (repos.length <= 1) return
-      const nextRepos = repos.filter((r) => r.id !== id)
-      const nextBranches = { ...branchesMap }
-      delete nextBranches[id]
-      setRepos(nextRepos)
-      setBranchesMap(nextBranches)
-      persistRepos(nextRepos)
-      persistBranches(nextBranches)
-      if (repoId === id) {
-        const fallback = nextRepos[0]
-        setRepoIdState(fallback.id)
-        setBranchState(fallback.defaultBranch)
-        persistWs(fallback.id, fallback.defaultBranch)
-      }
+    async (id: string) => {
+      if (!user?.token) return
+      await api<void>(`/api/repos/${id}`, {
+        method: 'DELETE',
+        token: user.token,
+      })
+      await refresh()
     },
-    [branchesMap, persistBranches, persistRepos, persistWs, repoId, repos],
+    [refresh, user?.token],
   )
 
   const value = useMemo(() => {
-    if (!repo) {
-      return {
-        repos,
-        repo: SEED_REPOS[0],
-        branch: 'development',
-        branchMeta: undefined,
-        branches: [],
-        setRepoId,
-        setBranch,
-        addRepo,
-        removeRepo,
-        getBranches,
-      }
+    const fallbackRepo: Repo = repo ?? {
+      id: '',
+      projectKey: '—',
+      slug: '—',
+      name: 'No repo',
+      description: '',
+      defaultBranch: 'main',
     }
     return {
       repos,
-      repo,
+      repo: fallbackRepo,
       branch: safeBranch,
       branchMeta,
       branches,
-      setRepoId,
+      loading,
+      error,
+      refresh,
+      setRepoId: (id: string) => {
+        void setRepoId(id)
+      },
       setBranch,
       addRepo,
-      removeRepo,
+      removeRepo: (id: string) => {
+        void removeRepo(id)
+      },
       getBranches,
     }
   }, [
     addRepo,
     branchMeta,
     branches,
+    error,
     getBranches,
+    loading,
+    refresh,
     removeRepo,
     repo,
     repos,
@@ -251,51 +273,26 @@ export function useWorkspace() {
   return ctx
 }
 
-/** Mock Git server discover — replaced when real API lands */
-export async function mockDiscoverRepo(projectKey: string, slug: string) {
-  await new Promise((r) => setTimeout(r, 900))
-  const key = projectKey.trim().toUpperCase()
-  const s = slug.trim().toLowerCase()
-  if (!key || !s) throw new Error('Project key / slug cannot be empty.')
-  if (s.includes(' ')) throw new Error('Slug cannot contain spaces.')
-
-  // simulate not found
-  if (s === 'not-found') {
-    throw new Error('Git server: repo not found (mock).')
-  }
-
-  const branches: Branch[] = [
-    {
-      name: 'main',
-      shortSha: 'e1a2b3c',
-      commitMessage: 'Initial import',
-      updatedAt: new Date().toISOString(),
-      dockerfileCount: 2,
-    },
-    {
-      name: 'develop',
-      shortSha: 'f4d5e6a',
-      commitMessage: 'CI dockerfiles',
-      updatedAt: new Date().toISOString(),
-      dockerfileCount: 3,
-    },
-    {
-      name: 'development',
-      shortSha: 'a9b8c7d',
-      commitMessage: 'Latest work',
-      updatedAt: new Date().toISOString(),
-      dockerfileCount: 4,
-    },
-  ]
-
+export async function discoverRepo(
+  token: string,
+  projectKey: string,
+  slug: string,
+) {
+  const data = await api<{
+    project_key: string
+    slug: string
+    name: string
+    default_branch: string
+    branches: ApiBranch[]
+  }>(
+    `/api/repos/discover?project_key=${encodeURIComponent(projectKey)}&slug=${encodeURIComponent(slug)}`,
+    { token },
+  )
   return {
-    projectKey: key,
-    slug: s,
-    name: s
-      .split('-')
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' '),
-    defaultBranch: 'development',
-    branches,
+    projectKey: data.project_key,
+    slug: data.slug,
+    name: data.name,
+    defaultBranch: data.default_branch,
+    branches: data.branches.map(mapBranch),
   }
 }

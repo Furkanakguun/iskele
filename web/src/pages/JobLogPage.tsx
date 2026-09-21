@@ -4,7 +4,8 @@ import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import { StatusBadge } from '../components/StatusBadge'
 import { api } from '../lib/api'
-import { modulesFor, type ModuleAction } from '../mock/data'
+import { mapModule, type ApiModule } from '../lib/mappers'
+import type { DockerModule, ModuleAction } from '../mock/data'
 
 type JobOut = {
   id: string
@@ -29,13 +30,28 @@ export function JobLogPage() {
   const repoId = search.get('repoId') ?? 'repo-nimbus-cart'
   const branch = search.get('branch') ?? 'development'
   const moduleId = search.get('moduleId') ?? 'mod-cart'
-  const mod = modulesFor(repoId, branch).find((m) => m.id === moduleId)
   const remote = search.get('remote')
   const tag = search.get('tag')
   const image = search.get('image')
 
+  const [mod, setMod] = useState<DockerModule | null>(null)
   const [job, setJob] = useState<JobOut | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user?.token) return
+    void (async () => {
+      try {
+        const row = await api<ApiModule>(
+          `/api/repos/${repoId}/modules/${moduleId}?branch=${encodeURIComponent(branch)}`,
+          { token: user.token },
+        )
+        setMod(mapModule(row))
+      } catch {
+        setMod(null)
+      }
+    })()
+  }, [user?.token, repoId, branch, moduleId])
 
   useEffect(() => {
     if (!user?.token) return
@@ -110,7 +126,7 @@ export function JobLogPage() {
             {job?.action ?? action}
           </h2>
           <p className="mt-1 text-[13px] text-muted">
-            {mod?.path} · {branch}
+            {mod?.path ?? moduleId} · {branch}
           </p>
           {job?.error && (
             <p className="mt-2 text-[13px] text-danger">{job.error}</p>

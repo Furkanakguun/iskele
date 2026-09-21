@@ -4,11 +4,8 @@ import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import { StatusBadge } from '../components/StatusBadge'
 import { api } from '../lib/api'
-import {
-  modulesFor,
-  REGISTRY,
-  type ModuleAction,
-} from '../mock/data'
+import { mapModule, type ApiModule } from '../lib/mappers'
+import { REGISTRY, type DockerModule, type ModuleAction } from '../mock/data'
 import { useWorkspace } from '../workspace/WorkspaceContext'
 
 const ACTIONS: {
@@ -36,21 +33,43 @@ export function ModuleDetailPage() {
   const { user } = useAuth()
   const { repos } = useWorkspace()
   const repo = repos.find((r) => r.id === repoId)
-  const mod = modulesFor(repoId, branchName).find((m) => m.id === moduleId)
+  const [mod, setMod] = useState<DockerModule | null>(null)
+  const [loadingMod, setLoadingMod] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [remote, setRemote] = useState(REGISTRY.remoteUrl)
-  const [imageName, setImageName] = useState(mod?.imageName ?? '')
-  const [tag, setTag] = useState(
-    () => mod?.lastImageTag?.split(':')[1] ?? REGISTRY.imageVersion,
-  )
+  const [imageName, setImageName] = useState('')
+  const [tag, setTag] = useState(REGISTRY.imageVersion)
   const [editingImage, setEditingImage] = useState(false)
   const [editingTag, setEditingTag] = useState(false)
 
-  const [grepFilter, setGrepFilter] = useState(() =>
-    defaultGrepFilter(mod?.imageName ?? ''),
-  )
+  const [grepFilter, setGrepFilter] = useState('')
   const [editingGrep, setEditingGrep] = useState(false)
   const [imagesOutput, setImagesOutput] = useState('')
   const [imagesLoading, setImagesLoading] = useState(false)
+
+  useEffect(() => {
+    if (!user?.token || !repoId || !moduleId) return
+    setLoadingMod(true)
+    void (async () => {
+      try {
+        const row = await api<ApiModule>(
+          `/api/repos/${repoId}/modules/${moduleId}?branch=${encodeURIComponent(branchName)}`,
+          { token: user.token },
+        )
+        const mapped = mapModule(row)
+        setMod(mapped)
+        setImageName(mapped.imageName)
+        setTag(mapped.lastImageTag?.split(':')[1] ?? REGISTRY.imageVersion)
+        setGrepFilter(defaultGrepFilter(mapped.imageName))
+        setLoadError(null)
+      } catch (err) {
+        setMod(null)
+        setLoadError(err instanceof Error ? err.message : 'Module not found')
+      } finally {
+        setLoadingMod(false)
+      }
+    })()
+  }, [user?.token, repoId, branchName, moduleId])
 
   const hasImage = Boolean(
     mod &&
@@ -93,8 +112,14 @@ export function ModuleDetailPage() {
     void refreshImages()
   }, [mod?.id, user?.token]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (loadingMod) {
+    return <p className="text-muted">Loading module…</p>
+  }
+
   if (!repo || !mod) {
-    return <p className="text-danger">Module not found.</p>
+    return (
+      <p className="text-danger">{loadError ?? 'Module not found.'}</p>
+    )
   }
 
   const moduleIdSafe = mod.id

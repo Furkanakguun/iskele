@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import {
-  mockDiscoverRepo,
+  discoverRepo,
   useWorkspace,
   type AddRepoInput,
 } from '../workspace/WorkspaceContext'
@@ -39,7 +39,7 @@ export function AddRepoPage() {
     setError(null)
     setLoading(true)
     try {
-      const result = await mockDiscoverRepo(projectKey, slug)
+      const result = await discoverRepo(user!.token, projectKey, slug)
       setDiscovered({
         name: result.name,
         defaultBranch: result.defaultBranch,
@@ -54,9 +54,10 @@ export function AddRepoPage() {
     }
   }
 
-  function onConfirm(e: FormEvent) {
+  async function onConfirm(e: FormEvent) {
     e.preventDefault()
     if (!discovered) return
+    setLoading(true)
     const input: AddRepoInput = {
       projectKey,
       slug,
@@ -65,16 +66,17 @@ export function AddRepoPage() {
       branches: discovered.branches,
       description: `Git ${projectKey.trim().toUpperCase()}/${slug.trim().toLowerCase()}`,
     }
-    const result = addRepo(input)
+    const result = await addRepo(input)
+    setLoading(false)
     if (!result.ok) {
       setError(result.error)
       return
     }
-    if (!setActive) {
-      // addRepo already sets active; if user unchecked, we still leave it —
-      // fine for MVP; they can switch in header
+    if (setActive) {
+      navigate(`/repos/${result.repo.id}`)
+    } else {
+      navigate('/repos')
     }
-    navigate(`/repos/${result.repo.id}`)
   }
 
   if (!canAdd) {
@@ -96,7 +98,7 @@ export function AddRepoPage() {
       <h2 className="mt-2 text-2xl font-semibold">Add repository</h2>
       <p className="mt-1 text-[13px] text-muted">
         Connect with a Git server project key + slug. Branches come from
-        mock discovery; real list when the API is wired.
+        the discover API (demo data for now).
       </p>
 
       {/* steps */}

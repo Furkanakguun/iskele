@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { api } from '../lib/api'
-import { modulesFor } from '../mock/data'
+import { mapModule, type ApiModule } from '../lib/mappers'
+import type { DockerModule } from '../mock/data'
 import { useWorkspace } from '../workspace/WorkspaceContext'
 
 const selectCls =
@@ -27,9 +28,10 @@ type RunningService = {
 
 export function HomePage() {
   const { user } = useAuth()
-  const { repo, branch, branchMeta, branches, setBranch } = useWorkspace()
+  const { repo, branch, branchMeta, branches, setBranch, loading } =
+    useWorkspace()
 
-  const modules = modulesFor(repo.id, branch)
+  const [modules, setModules] = useState<DockerModule[]>([])
   const ready = modules.filter(
     (m) => m.status === 'ready' || m.status === 'pushed',
   ).length
@@ -73,6 +75,21 @@ export function HomePage() {
   }, [psFilter, user?.token])
 
   useEffect(() => {
+    if (!user?.token || !repo.id) return
+    void (async () => {
+      try {
+        const rows = await api<ApiModule[]>(
+          `/api/repos/${repo.id}/modules?branch=${encodeURIComponent(branch)}`,
+          { token: user.token },
+        )
+        setModules(rows.map(mapModule))
+      } catch {
+        setModules([])
+      }
+    })()
+  }, [user?.token, repo.id, branch])
+
+  useEffect(() => {
     void refreshPs()
   }, [refreshPs])
 
@@ -100,6 +117,9 @@ export function HomePage() {
 
   return (
     <div className="space-y-5">
+      {loading && (
+        <p className="text-[13px] text-muted">Loading workspace…</p>
+      )}
       <div className="grid gap-5 xl:grid-cols-[1fr_300px]">
         <div className="space-y-4">
           {/* Branch only — repo switch is in header / Repos tab */}

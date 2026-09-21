@@ -1,15 +1,38 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import { StatusBadge } from '../components/StatusBadge'
-import { modulesFor } from '../mock/data'
+import { api } from '../lib/api'
+import { mapModule, type ApiModule } from '../lib/mappers'
+import type { DockerModule } from '../mock/data'
 import { useWorkspace } from '../workspace/WorkspaceContext'
 
 export function ModulesPage() {
   const { repoId = '', branch = '' } = useParams()
   const branchName = decodeURIComponent(branch)
   const { repos } = useWorkspace()
+  const { user } = useAuth()
   const repo = repos.find((r) => r.id === repoId)
-  const modules = modulesFor(repoId, branchName)
+  const [modules, setModules] = useState<DockerModule[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user?.token || !repoId) return
+    void (async () => {
+      try {
+        const rows = await api<ApiModule[]>(
+          `/api/repos/${repoId}/modules?branch=${encodeURIComponent(branchName)}`,
+          { token: user.token },
+        )
+        setModules(rows.map(mapModule))
+        setError(null)
+      } catch (err) {
+        setModules([])
+        setError(err instanceof Error ? err.message : 'Failed to load modules')
+      }
+    })()
+  }, [user?.token, repoId, branchName])
 
   if (!repo) {
     return <p className="text-danger">Repo not found.</p>
@@ -41,11 +64,11 @@ export function ModulesPage() {
         </Link>
       </div>
 
+      {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
+
       {modules.length === 0 ? (
         <div className="card mt-5 p-6 text-[13px] text-muted">
-          No Dockerfile scan for this branch yet (mock). Nimbus Cart{' '}
-          <code className="text-text">development</code> ships with 10 modules.
-          Newly added repos will scan automatically once the API is connected.
+          No Dockerfile modules for this branch yet.
         </div>
       ) : (
         <ul className="mt-5 space-y-2">
@@ -64,25 +87,16 @@ export function ModulesPage() {
                   </Link>
                   <StatusBadge status={m.status} />
                 </div>
-                <p className="mt-1 truncate font-mono text-[11px] text-muted">
-                  {m.path}/{m.dockerfile} · EXPOSE {m.expose}
+                <p className="mt-1 font-mono text-[11px] text-muted">
+                  {m.path}/{m.dockerfile}
                 </p>
-                {m.note && (
-                  <p className="mt-1 text-[11px] text-warn">{m.note}</p>
-                )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  to={`/repos/${repoId}/branches/${encodeURIComponent(branchName)}/modules/${m.id}`}
-                >
-                  <Button variant="primary">Open</Button>
-                </Link>
-                <Link
-                  to={`/jobs/new?repoId=${repoId}&branch=${encodeURIComponent(branchName)}&moduleId=${m.id}&action=build`}
-                >
-                  <Button>Build</Button>
-                </Link>
-              </div>
+              <Link
+                to={`/repos/${repoId}/branches/${encodeURIComponent(branchName)}/modules/${m.id}`}
+                className="text-[12px] font-medium text-lime hover:underline"
+              >
+                open
+              </Link>
             </li>
           ))}
         </ul>

@@ -81,24 +81,30 @@ export function AppShell() {
             </p>
             <div className="mt-0.5 flex flex-wrap items-center gap-2">
               <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-              <span className="text-muted/50">/</span>
-              <select
-                value={repo.id}
-                onChange={(e) => setRepoId(e.target.value)}
-                className="max-w-[280px] truncate rounded-md border border-border bg-surface-2 px-2 py-1 font-mono text-[12px] text-muted outline-none hover:text-text focus:border-lime focus:text-text"
-                title="Active repo"
-              >
-                {repos.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.projectKey}/{r.slug}
-                  </option>
-                ))}
-              </select>
+              {repos.length > 0 && (
+                <>
+                  <span className="text-muted/50">/</span>
+                  <select
+                    value={repo.id}
+                    onChange={(e) => setRepoId(e.target.value)}
+                    className="max-w-[280px] truncate rounded-md border border-border bg-surface-2 px-2 py-1 font-mono text-[12px] text-muted outline-none hover:text-text focus:border-lime focus:text-text"
+                    title="Active repo"
+                  >
+                    {repos.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.projectKey}/{r.slug}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
           </div>
           <div className="hidden items-center gap-2 font-mono text-[11px] text-muted sm:flex">
             <span className="rounded border border-border px-2 py-1">
-              {repo.projectKey}/{repo.slug}
+              {repos.length > 0
+                ? `${repo.projectKey}/${repo.slug}`
+                : 'No repo'}
             </span>
           </div>
         </header>
