@@ -12,4 +12,5 @@ def health() -> dict:
         "status": "ok",
         "git_configured": bool(settings.git_base_url.strip()),
         "docker_host": settings.docker_host,
+        "auth": "jwt",
     }

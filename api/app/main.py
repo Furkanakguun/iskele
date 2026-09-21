@@ -1,9 +1,20 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import docker, health, jobs, repos
+from app.config import get_settings
+from app.routers import activity, auth, docker, health, jobs, repos
+from app.services.users import ensure_seed_users
 
-app = FastAPI(title="Iskele API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    ensure_seed_users(get_settings())
+    yield
+
+
+app = FastAPI(title="Iskele API", version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +28,9 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(auth.users_router, prefix="/api")
 app.include_router(repos.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(docker.router, prefix="/api")
+app.include_router(activity.router, prefix="/api")

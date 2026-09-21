@@ -5,6 +5,19 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    display_name: str
+    role: str
+    username: str
+
+
 class RepoOut(BaseModel):
     id: str
     project_key: str
@@ -54,9 +67,31 @@ class JobOut(BaseModel):
     repo_id: str
     branch: str
     module_id: str
+    image: Optional[str] = None
+    tag: Optional[str] = None
+    remote: Optional[str] = None
     lines: List[str] = []
+    error: Optional[str] = None
+    created_at: str
+    finished_at: Optional[str] = None
 
 
 class DockerCommandOut(BaseModel):
     command: str
     output: str
+
+
+class RunningServiceOut(BaseModel):
+    name: str
+    image: str
+    host_port: int
+    container_port: int
+    url: str
+    status: str
+
+
+class ActivityOut(BaseModel):
+    id: str
+    text: str
+    tone: str
+    created_at: str

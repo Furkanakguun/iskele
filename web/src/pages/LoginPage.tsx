@@ -10,12 +10,16 @@ export function LoginPage() {
   const [username, setUsername] = useState('testci')
   const [password, setPassword] = useState('testci')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   if (user) return <Navigate to="/" replace />
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    const err = login(username, password)
+    setBusy(true)
+    setError(null)
+    const err = await login(username, password)
+    setBusy(false)
     if (err) {
       setError(err)
       return
@@ -65,12 +69,13 @@ export function LoginPage() {
 
         <Button
           type="submit"
+          disabled={busy}
           className="w-full !rounded-xl !bg-[#3d4a2a] !text-[#d5e0c0] hover:!bg-[#4a5a34]"
         >
-          Sign in
+          {busy ? 'Signing in…' : 'Sign in'}
         </Button>
         <p className="mt-3 text-center text-[11px] text-[#5a5a5a]">
-          mock · testci/testci · admin/admin
+          admin/admin · testci/testci (seeded)
         </p>
       </form>
     </div>

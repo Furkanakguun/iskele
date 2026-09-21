@@ -75,7 +75,20 @@ MODULES: Dict[str, List[ModuleOut]] = {
             status="building",
             last_job_id="job-203",
         ),
+        ModuleOut(
+            id="mod-storefront",
+            name="Storefront",
+            path="apps/storefront",
+            dockerfile="Dockerfile",
+            base_image="nginx:1.27-alpine",
+            expose="443",
+            image_name="nimbus-storefront",
+            status="failed",
+            last_job_id="job-205",
+            note="Requires dist/ before build",
+        ),
     ]
 }
 
+# job_id -> JobOut.model_dump()
 JOBS: Dict[str, dict] = {}

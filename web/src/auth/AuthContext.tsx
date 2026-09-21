@@ -6,28 +6,34 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { MOCK_USERS, type Role } from '../mock/data'
+import { api } from '../lib/api'
+
+export type Role = 'admin' | 'tester'
 
 export type SessionUser = {
   username: string
   displayName: string
   role: Role
+  token: string
 }
 
 type AuthContextValue = {
   user: SessionUser | null
-  login: (username: string, password: string) => string | null
+  login: (username: string, password: string) => Promise<string | null>
   logout: () => void
+  authHeaders: Record<string, string>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-const STORAGE_KEY = 'iskele.session'
+const STORAGE_KEY = 'iskele.session.v3'
 
 function readStored(): SessionUser | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as SessionUser
+    const parsed = JSON.parse(raw) as SessionUser
+    if (!parsed?.token || !parsed?.username) return null
+    return parsed
   } catch {
     return null
   }
@@ -36,19 +42,29 @@ function readStored(): SessionUser | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(() => readStored())
 
-  const login = useCallback((username: string, password: string) => {
-    const found = MOCK_USERS.find(
-      (u) => u.username === username.trim() && u.password === password,
-    )
-    if (!found) return 'Invalid username or password.'
-    const session: SessionUser = {
-      username: found.username,
-      displayName: found.displayName,
-      role: found.role,
+  const login = useCallback(async (username: string, password: string) => {
+    try {
+      const data = await api<{
+        access_token: string
+        display_name: string
+        role: Role
+        username: string
+      }>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      })
+      const session: SessionUser = {
+        username: data.username,
+        displayName: data.display_name,
+        role: data.role,
+        token: data.access_token,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
+      setUser(session)
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Login failed'
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
-    setUser(session)
-    return null
   }, [])
 
   const logout = useCallback(() => {
@@ -56,7 +72,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
-  const value = useMemo(() => ({ user, login, logout }), [user, login, logout])
+  const authHeaders = useMemo(
+    () => (user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
+    [user],
+  )
+
+  const value = useMemo(
+    () => ({ user, login, logout, authHeaders }),
+    [user, login, logout, authHeaders],
+  )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
