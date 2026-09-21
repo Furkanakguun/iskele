@@ -293,7 +293,7 @@ export function ModuleDetailPage() {
 
         <aside className="space-y-4">
           <div className="card p-4">
-            <h3 className="text-sm font-semibold">Push hedefi</h3>
+            <h3 className="text-sm font-semibold">Push target</h3>
             <label className="mt-3 block text-[12px] text-muted">
               Remote URL
               <input
