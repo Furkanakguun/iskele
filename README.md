@@ -6,13 +6,10 @@ Build, package, and push Docker images from Git repositories. Pick a branch, ope
 
 ![Module](docs/module.png)
 
-## Demo data
-
-The public repo ships with a **fictional** seed project (`NIMBUS` / Nimbus Cart) so the UI and API work without a real Git server. Replace it with your own repos when you connect credentials.
 
 ## Data volume
 
-Iskele keeps checkouts on its **own** volume (not the Jenkins job workspace):
+Iskele keeps checkouts on its **own** volume:
 
 ```
 $ISKELE_DATA_DIR/
@@ -21,7 +18,7 @@ $ISKELE_DATA_DIR/
   iskele.db                   # users + settings
 ```
 
-On Jenkins, mount a dedicated host path or named volume (see `docker-compose.yml`). Settings → **Disk usage** shows Iskele footprint, per-branch checkout size, Docker image totals, and host free space.
+On Jenkins, mount a dedicated host path or named volume (see `docker-compose.yml`). Settings **Disk usage** shows Iskele footprint, per-branch checkout size, Docker image totals, and host free space.
 
 ## License
 
