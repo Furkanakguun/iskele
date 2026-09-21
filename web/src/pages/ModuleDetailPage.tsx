@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import { StatusBadge } from '../components/StatusBadge'
+import { api } from '../lib/api'
 import {
   modulesFor,
   REGISTRY,
@@ -31,6 +33,7 @@ export function ModuleDetailPage() {
   const { repoId = '', branch = '', moduleId = '' } = useParams()
   const branchName = decodeURIComponent(branch)
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { repos } = useWorkspace()
   const repo = repos.find((r) => r.id === repoId)
   const mod = modulesFor(repoId, branchName).find((m) => m.id === moduleId)
@@ -66,50 +69,29 @@ export function ModuleDetailPage() {
   )
 
   const refreshImages = useCallback(async () => {
-    if (!mod) return
+    if (!mod || !user?.token) return
     setImagesLoading(true)
-    await new Promise((r) => setTimeout(r, 450))
-    const filter = grepFilter.trim().toLowerCase()
-    const header =
-      'REPOSITORY                                          TAG              IMAGE ID       CREATED        SIZE'
-    const rows: string[] = []
-
-    const matchSelf =
-      !filter ||
-      effectiveImage.toLowerCase().includes(filter) ||
-      (mod.lastImageTag ?? '').toLowerCase().includes(filter)
-
-    if (matchSelf && (hasImage || mod.lastImageTag)) {
-      const repoCol = effectiveImage.padEnd(50).slice(0, 50)
-      const tagCol = (tag || 'latest').padEnd(16).slice(0, 16)
-      rows.push(`${repoCol} ${tagCol} a1b2c3d4e5f6   2 hours ago    412MB`)
-    }
-
-    if (
-      !filter ||
-      mod.baseImage.toLowerCase().includes(filter) ||
-      filter.includes('temurin') ||
-      filter.includes('alpine')
-    ) {
-      const baseName = mod.baseImage.split(':')[0] ?? 'eclipse-temurin'
-      const baseTag = mod.baseImage.split(':')[1] ?? 'latest'
-      rows.push(
-        `${`${REGISTRY.remoteUrl}/${baseName}`.padEnd(50).slice(0, 50)} ${baseTag.padEnd(16).slice(0, 16)} 9f8e7d6c5b4a   3 weeks ago    198MB`,
+    try {
+      const q = grepFilter.trim()
+        ? `?grep=${encodeURIComponent(grepFilter.trim())}`
+        : ''
+      const data = await api<{ command: string; output: string }>(
+        `/api/docker/images${q}`,
+        { token: user.token },
       )
+      setImagesOutput(data.output)
+    } catch (err) {
+      setImagesOutput(
+        err instanceof Error ? `ERROR: ${err.message}` : 'ERROR: request failed',
+      )
+    } finally {
+      setImagesLoading(false)
     }
-
-    const body =
-      rows.length > 0
-        ? [header, ...rows].join('\n')
-        : `${header}\n(no matching images — mock)`
-
-    setImagesOutput(body)
-    setImagesLoading(false)
-  }, [effectiveImage, grepFilter, hasImage, mod, tag])
+  }, [grepFilter, mod, user?.token])
 
   useEffect(() => {
     void refreshImages()
-  }, [mod?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mod?.id, user?.token]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!repo || !mod) {
     return <p className="text-danger">Module not found.</p>

@@ -1,18 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import { StatusBadge } from '../components/StatusBadge'
-import {
-  ACTION_LOGS,
-  modulesFor,
-  type JobStatus,
-  type ModuleAction,
-} from '../mock/data'
+import { api } from '../lib/api'
+import { modulesFor, type ModuleAction } from '../mock/data'
+
+type JobOut = {
+  id: string
+  status: string
+  action: string
+  repo_id: string
+  branch: string
+  module_id: string
+  lines: string[]
+  error: string | null
+}
 
 export function JobLogPage() {
   const { jobId } = useParams()
   const [search] = useSearchParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const isNew = jobId === 'new' || jobId === 'yeni'
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -23,43 +32,59 @@ export function JobLogPage() {
   const mod = modulesFor(repoId, branch).find((m) => m.id === moduleId)
   const remote = search.get('remote')
   const tag = search.get('tag')
+  const image = search.get('image')
 
-  const baseLines = ACTION_LOGS[action] ?? ACTION_LOGS.build
-  const seed = [
-    `[iskele] module=${mod?.name ?? moduleId}`,
-    `[iskele] branch=${branch}`,
-    `[iskele] action=${action}`,
-    remote ? `[iskele] remote=${remote}` : null,
-    tag ? `[iskele] tag=${tag}` : null,
-  ].filter(Boolean) as string[]
-
-  const [status, setStatus] = useState<JobStatus>(isNew ? 'running' : 'success')
-  const [lines, setLines] = useState<string[]>(
-    isNew ? [] : [...seed, ...baseLines],
-  )
+  const [job, setJob] = useState<JobOut | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isNew) return
-    const full = [...seed, ...baseLines]
-    let i = 0
-    const timer = window.setInterval(() => {
-      if (i >= full.length) {
-        window.clearInterval(timer)
-        const failStorefront = moduleId === 'mod-storefront' && action === 'build'
-        setStatus(failStorefront ? 'failed' : 'success')
-        if (failStorefront) {
-          setLines((prev) => [
-            ...prev,
-            '[iskele] ERROR: dist/ not found — build the storefront first',
-          ])
+    if (!user?.token) return
+
+    void (async () => {
+      try {
+        if (isNew) {
+          const created = await api<JobOut>('/api/jobs', {
+            method: 'POST',
+            token: user.token,
+            body: JSON.stringify({
+              repo_id: repoId,
+              branch,
+              module_id: moduleId,
+              action,
+              image: image || undefined,
+              tag: tag || undefined,
+              remote: remote || undefined,
+            }),
+          })
+          setJob(created)
+          navigate(`/jobs/${created.id}`, { replace: true })
+          return
         }
-        return
+
+        const loaded = await api<JobOut>(`/api/jobs/${jobId}`, {
+          token: user.token,
+        })
+        setJob(loaded)
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Job failed to load')
       }
-      setLines((prev) => [...prev, full[i]])
-      i += 1
-    }, 260)
-    return () => window.clearInterval(timer)
-  }, [isNew, moduleId, action]) // eslint-disable-line react-hooks/exhaustive-deps
+    })()
+  }, [
+    user?.token,
+    isNew,
+    jobId,
+    repoId,
+    branch,
+    moduleId,
+    action,
+    image,
+    tag,
+    remote,
+    navigate,
+  ])
+
+  const lines = job?.lines ?? []
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -81,21 +106,30 @@ export function JobLogPage() {
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold capitalize">{action}</h2>
+          <h2 className="text-2xl font-semibold capitalize">
+            {job?.action ?? action}
+          </h2>
           <p className="mt-1 text-[13px] text-muted">
             {mod?.path} · {branch}
           </p>
+          {job?.error && (
+            <p className="mt-2 text-[13px] text-danger">{job.error}</p>
+          )}
         </div>
-        <StatusBadge status={status} />
+        <StatusBadge status={job?.status ?? 'queued'} />
       </div>
+
+      {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
 
       <div className="card mt-5 overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-4 py-2 text-[11px] text-muted">
-          <span>iskele job · mock</span>
+          <span>iskele job · {job?.id ?? '…'}</span>
           <span>{lines.length} lines</span>
         </div>
         <pre className="max-h-[28rem] overflow-auto bg-bg p-4 font-mono text-[12px] leading-relaxed text-lime">
-          {lines.length === 0 && <span className="text-muted">waiting…</span>}
+          {lines.length === 0 && !error && (
+            <span className="text-muted">waiting…</span>
+          )}
           {lines.map((line, i) => (
             <div key={`${i}-${line.slice(0, 24)}`}>{line}</div>
           ))}

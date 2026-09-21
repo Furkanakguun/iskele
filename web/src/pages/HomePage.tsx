@@ -1,13 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
-import { ACTIVITIES, modulesFor, RUNNING, runningUrl } from '../mock/data'
+import { api } from '../lib/api'
+import { modulesFor } from '../mock/data'
 import { useWorkspace } from '../workspace/WorkspaceContext'
 
 const selectCls =
   'w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-lime'
 
+type ActivityItem = {
+  id: string
+  text: string
+  tone: string
+  created_at: string
+}
+
+type RunningService = {
+  name: string
+  image: string
+  host_port: number
+  container_port: number
+  url: string
+  status: string
+}
+
 export function HomePage() {
+  const { user } = useAuth()
   const { repo, branch, branchMeta, branches, setBranch } = useWorkspace()
 
   const modules = modulesFor(repo.id, branch)
@@ -21,6 +40,8 @@ export function HomePage() {
   const [editingPs, setEditingPs] = useState(false)
   const [psOutput, setPsOutput] = useState('')
   const [psLoading, setPsLoading] = useState(false)
+  const [activity, setActivity] = useState<ActivityItem[]>([])
+  const [running, setRunning] = useState<RunningService[]>([])
 
   const psCmd = useMemo(
     () =>
@@ -31,31 +52,46 @@ export function HomePage() {
   )
 
   const refreshPs = useCallback(async () => {
+    if (!user?.token) return
     setPsLoading(true)
-    await new Promise((r) => setTimeout(r, 450))
-    const filter = psFilter.trim().toLowerCase()
-    const header =
-      'CONTAINER ID   IMAGE                                          COMMAND                  CREATED        STATUS        PORTS                     NAMES'
-    const allRows = RUNNING.map((c, i) => {
-      const id = `${'abcdef0123456789'.slice(i, i + 12)}`
-      const image = c.image.padEnd(46).slice(0, 46)
-      const ports = `0.0.0.0:${c.hostPort}->${c.containerPort}/tcp`.padEnd(25)
-      return `${id}   ${image} "java -jar app.jar"      ${c.upFor.padEnd(12)} Up ${c.upFor.padEnd(9)} ${ports} ${c.name}`
-    })
-    const rows = filter
-      ? allRows.filter((r) => r.toLowerCase().includes(filter))
-      : allRows
-    const body =
-      rows.length > 0
-        ? [header, ...rows].join('\n')
-        : `${header}\n(no matching containers — mock)`
-    setPsOutput(body)
-    setPsLoading(false)
-  }, [psFilter])
+    try {
+      const q = psFilter.trim()
+        ? `?grep=${encodeURIComponent(psFilter.trim())}`
+        : ''
+      const data = await api<{ command: string; output: string }>(
+        `/api/docker/ps${q}`,
+        { token: user.token },
+      )
+      setPsOutput(data.output)
+    } catch (err) {
+      setPsOutput(
+        err instanceof Error ? `ERROR: ${err.message}` : 'ERROR: request failed',
+      )
+    } finally {
+      setPsLoading(false)
+    }
+  }, [psFilter, user?.token])
 
   useEffect(() => {
     void refreshPs()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshPs])
+
+  useEffect(() => {
+    if (!user?.token) return
+    void (async () => {
+      try {
+        const [act, run] = await Promise.all([
+          api<ActivityItem[]>('/api/activity?limit=5', { token: user.token }),
+          api<RunningService[]>('/api/docker/running', { token: user.token }),
+        ])
+        setActivity(act)
+        setRunning(run)
+      } catch {
+        setActivity([])
+        setRunning([])
+      }
+    })()
+  }, [user?.token])
 
   function commitPsEdit() {
     setEditingPs(false)
@@ -186,12 +222,16 @@ export function HomePage() {
           <div className="card p-4">
             <h3 className="text-sm font-semibold">Activity</h3>
             <ul className="mt-3 space-y-3">
-              {ACTIVITIES.slice(0, 5).map((a) => (
-                <li key={a.id} className="text-[13px]">
-                  <p>{a.text}</p>
-                  <p className="text-[11px] text-muted">{a.timeAgo}</p>
-                </li>
-              ))}
+              {activity.length === 0 ? (
+                <li className="text-[13px] text-muted">No jobs yet.</li>
+              ) : (
+                activity.map((a) => (
+                  <li key={a.id} className="text-[13px]">
+                    <p>{a.text}</p>
+                    <p className="text-[11px] text-muted">{a.created_at}</p>
+                  </li>
+                ))
+              )}
             </ul>
             <Link
               to="/activity"
@@ -205,30 +245,27 @@ export function HomePage() {
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">Running</h3>
               <span className="font-mono text-[11px] text-muted">
-                {RUNNING.length} up
+                {running.length} up
               </span>
             </div>
             <ul className="mt-3 space-y-3">
-              {RUNNING.map((c) => {
-                const url = runningUrl(c)
-                return (
-                  <li key={c.id} className="min-w-0">
-                    <p className="truncate text-[13px] font-medium">{c.name}</p>
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-0.5 block truncate font-mono text-[11px] text-lime hover:underline"
-                      title={url}
-                    >
-                      {url}
-                    </a>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted">
-                      :{c.hostPort} · Up {c.upFor}
-                    </p>
-                  </li>
-                )
-              })}
+              {running.map((c) => (
+                <li key={c.name} className="min-w-0">
+                  <p className="truncate text-[13px] font-medium">{c.name}</p>
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-0.5 block truncate font-mono text-[11px] text-lime hover:underline"
+                    title={c.url}
+                  >
+                    {c.url}
+                  </a>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted">
+                    :{c.host_port} · {c.status}
+                  </p>
+                </li>
+              ))}
             </ul>
           </div>
         </aside>
