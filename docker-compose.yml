@@ -4,7 +4,7 @@ services:
     working_dir: /app
     volumes:
       - ./api:/app
-      - iskele-data:/app/data
+      - iskele-data:/var/lib/iskele
     command: >
       sh -c "pip install -r requirements.txt &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -15,7 +15,8 @@ services:
       ISKELE_ADMIN_USERNAME: ${ISKELE_ADMIN_USERNAME:-admin}
       ISKELE_ADMIN_PASSWORD: ${ISKELE_ADMIN_PASSWORD:-admin}
       ISKELE_ADMIN_DISPLAY_NAME: ${ISKELE_ADMIN_DISPLAY_NAME:-Admin}
-      ISKELE_DATABASE_PATH: /app/data/iskele.db
+      ISKELE_DATA_DIR: /var/lib/iskele
+      ISKELE_DATABASE_PATH: /var/lib/iskele/iskele.db
       ISKELE_DOCKER_HOST: localhost
       ISKELE_SEED_TESTER: "true"
     # Mount docker.sock later when real jobs are wired:

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     port: int = 8000
     jobs_autorun: bool = True
 
+    # Persistent volume (checkouts, artifacts). DB may live here too.
+    data_dir: str = str(_API_DIR / "data")
+
     # Auth / users
     database_path: str = str(_API_DIR / "data" / "iskele.db")
     jwt_secret: str = "change-me-in-production"

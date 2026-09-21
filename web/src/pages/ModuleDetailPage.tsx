@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useAppConfig } from '../auth/AppConfigContext'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/Button'
 import { StatusBadge } from '../components/StatusBadge'
 import { api } from '../lib/api'
 import { mapModule, type ApiModule } from '../lib/mappers'
-import { REGISTRY, type DockerModule, type ModuleAction } from '../mock/data'
+import { type DockerModule, type ModuleAction } from '../mock/data'
 import { useWorkspace } from '../workspace/WorkspaceContext'
 
 const ACTIONS: {
@@ -19,26 +20,20 @@ const ACTIONS: {
   { id: 'zip', label: 'Zip', hint: 'module package' },
 ]
 
-/** …-catalog → catalog (image prefix strip for default grep) */
-function defaultGrepFilter(imageName: string): string {
-  return (
-    imageName.replace(new RegExp(`^${REGISTRY.imagePrefix}`), '') || imageName
-  )
-}
-
 export function ModuleDetailPage() {
   const { repoId = '', branch = '', moduleId = '' } = useParams()
   const branchName = decodeURIComponent(branch)
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { config } = useAppConfig()
   const { repos } = useWorkspace()
   const repo = repos.find((r) => r.id === repoId)
   const [mod, setMod] = useState<DockerModule | null>(null)
   const [loadingMod, setLoadingMod] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [remote, setRemote] = useState(REGISTRY.remoteUrl)
+  const [remote, setRemote] = useState(config.remote_registry)
   const [imageName, setImageName] = useState('')
-  const [tag, setTag] = useState(REGISTRY.imageVersion)
+  const [tag, setTag] = useState(config.image_version)
   const [editingImage, setEditingImage] = useState(false)
   const [editingTag, setEditingTag] = useState(false)
 
@@ -46,6 +41,18 @@ export function ModuleDetailPage() {
   const [editingGrep, setEditingGrep] = useState(false)
   const [imagesOutput, setImagesOutput] = useState('')
   const [imagesLoading, setImagesLoading] = useState(false)
+
+  function defaultGrepFilter(imageName: string): string {
+    const prefix = config.image_prefix || ''
+    if (prefix && imageName.startsWith(prefix)) {
+      return imageName.slice(prefix.length) || imageName
+    }
+    return imageName
+  }
+
+  useEffect(() => {
+    setRemote(config.remote_registry)
+  }, [config.remote_registry])
 
   useEffect(() => {
     if (!user?.token || !repoId || !moduleId) return
@@ -59,7 +66,7 @@ export function ModuleDetailPage() {
         const mapped = mapModule(row)
         setMod(mapped)
         setImageName(mapped.imageName)
-        setTag(mapped.lastImageTag?.split(':')[1] ?? REGISTRY.imageVersion)
+        setTag(mapped.lastImageTag?.split(':')[1] ?? config.image_version)
         setGrepFilter(defaultGrepFilter(mapped.imageName))
         setLoadError(null)
       } catch (err) {
@@ -69,7 +76,7 @@ export function ModuleDetailPage() {
         setLoadingMod(false)
       }
     })()
-  }, [user?.token, repoId, branchName, moduleId])
+  }, [user?.token, repoId, branchName, moduleId, config.image_version, config.image_prefix])
 
   const hasImage = Boolean(
     mod &&
@@ -133,7 +140,7 @@ export function ModuleDetailPage() {
       action,
       remote,
       image: effectiveImage || defaultImageName,
-      tag: tag.trim() || REGISTRY.imageVersion,
+      tag: tag.trim() || config.image_version,
     })
     navigate(`/jobs/new?${q.toString()}`)
   }

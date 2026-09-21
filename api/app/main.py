@@ -5,12 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.routers import activity, auth, docker, health, jobs, repos, settings
+from app.services.storage import ensure_data_dirs
 from app.services.users import ensure_seed_users
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    ensure_seed_users(get_settings())
+    cfg = get_settings()
+    ensure_seed_users(cfg)
+    ensure_data_dirs(settings=cfg)
     yield
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.config import Settings, get_settings
@@ -9,18 +10,17 @@ DEFAULT_REMOTE = "registry.example.com/nimbus"
 DEFAULT_IMAGE_VERSION = "2.3.1"
 DEFAULT_IMAGE_PREFIX = "nimbus-"
 
-_KEYS = (
-    "git_base_url",
-    "git_token",
-    "docker_host",
-    "remote_registry",
-    "image_version",
-    "image_prefix",
-)
+
+def _ensure_volume(data_dir: str) -> None:
+    root = Path(data_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "repos").mkdir(parents=True, exist_ok=True)
+    (root / "artifacts").mkdir(parents=True, exist_ok=True)
 
 
 def _seed_defaults(settings: Settings) -> None:
     init_db(settings.database_path)
+    _ensure_volume(settings.data_dir)
     defaults = {
         "git_base_url": settings.git_base_url or "https://git.example.local",
         "git_token": settings.git_token or "",
@@ -28,6 +28,7 @@ def _seed_defaults(settings: Settings) -> None:
         "remote_registry": DEFAULT_REMOTE,
         "image_version": DEFAULT_IMAGE_VERSION,
         "image_prefix": DEFAULT_IMAGE_PREFIX,
+        "data_dir": settings.data_dir,
     }
     with get_connection(settings.database_path) as conn:
         for key, value in defaults.items():
@@ -50,8 +51,10 @@ def _load_map(settings: Optional[Settings] = None) -> Dict[str, str]:
 
 
 def get_app_settings(settings: Optional[Settings] = None) -> Dict[str, Any]:
+    settings = settings or get_settings()
     data = _load_map(settings)
     token = data.get("git_token", "")
+    data_dir = data.get("data_dir") or settings.data_dir
     return {
         "git_base_url": data.get("git_base_url", ""),
         "git_token_set": bool(token.strip()),
@@ -59,6 +62,7 @@ def get_app_settings(settings: Optional[Settings] = None) -> Dict[str, Any]:
         "remote_registry": data.get("remote_registry", DEFAULT_REMOTE),
         "image_version": data.get("image_version", DEFAULT_IMAGE_VERSION),
         "image_prefix": data.get("image_prefix", DEFAULT_IMAGE_PREFIX),
+        "data_dir": data_dir,
     }
 
 
@@ -75,20 +79,22 @@ def update_app_settings(
         "image_version",
         "image_prefix",
         "git_token",
+        "data_dir",
     }
     with get_connection(settings.database_path) as conn:
         for key, value in patch.items():
             if key not in allowed:
                 continue
             if key == "git_token":
-                # Empty string means leave unchanged; None-like skip
-                if value is None:
+                if value is None or value == "":
                     continue
-                if value == "":
-                    continue
+            if key == "data_dir" and (value is None or str(value).strip() == ""):
+                continue
             conn.execute(
                 "INSERT INTO app_settings (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (key, str(value)),
             )
-    return get_app_settings(settings)
+    updated = get_app_settings(settings)
+    _ensure_volume(updated["data_dir"])
+    return updated

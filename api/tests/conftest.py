@@ -10,7 +10,9 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "test.db"
+    data_dir = tmp_path / "iskele-data"
     monkeypatch.setenv("ISKELE_DATABASE_PATH", str(db_path))
+    monkeypatch.setenv("ISKELE_DATA_DIR", str(data_dir))
     monkeypatch.setenv("ISKELE_JWT_SECRET", "test-secret")
     monkeypatch.setenv("ISKELE_ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ISKELE_ADMIN_PASSWORD", "admin")
