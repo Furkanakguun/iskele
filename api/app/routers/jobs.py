@@ -4,7 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_api_token
+from app.auth import require_api_token, require_user
 from app.config import Settings, get_settings
 from app.models.schemas import JobCreate, JobOut
 from app.services import jobs as jobs_service
@@ -24,9 +24,11 @@ def list_jobs(
 def create_job(
     payload: JobCreate,
     settings: Settings = Depends(get_settings),
-    _: str = Depends(require_api_token),
+    user: dict = Depends(require_user),
 ) -> JobOut:
-    return jobs_service.create_job(payload, settings=settings)
+    return jobs_service.create_job(
+        payload, settings=settings, created_by=int(user["id"])
+    )
 
 
 @router.get("/{job_id}", response_model=JobOut)

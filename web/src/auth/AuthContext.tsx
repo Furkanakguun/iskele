@@ -8,11 +8,10 @@ import {
 } from 'react'
 import { api } from '../lib/api'
 
-export type Role = 'admin' | 'tester'
+export type Role = 'admin' | 'user'
 
 export type SessionUser = {
   username: string
-  displayName: string
   role: Role
   token: string
 }
@@ -25,7 +24,7 @@ type AuthContextValue = {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-const STORAGE_KEY = 'iskele.session.v3'
+const STORAGE_KEY = 'iskele.session.v4'
 
 function readStored(): SessionUser | null {
   try {
@@ -46,7 +45,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await api<{
         access_token: string
-        display_name: string
         role: Role
         username: string
       }>('/api/auth/login', {
@@ -55,7 +53,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       const session: SessionUser = {
         username: data.username,
-        displayName: data.display_name,
         role: data.role,
         token: data.access_token,
       }

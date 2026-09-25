@@ -9,58 +9,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import Settings, get_settings
 
-# Stub image sizes when docker CLI is unavailable (dev / CI)
-_DEMO_IMAGES = [
-    {
-        "repository": "nimbus-catalog",
-        "tag": "2.3.1-e7c41a9",
-        "id": "a1b2c3d4e5f6",
-        "size_bytes": 412 * 1024 * 1024,
-    },
-    {
-        "repository": "nimbus-cart",
-        "tag": "2.3.1-e7c41a9",
-        "id": "b2c3d4e5f6a7",
-        "size_bytes": 398 * 1024 * 1024,
-    },
-    {
-        "repository": "nimbus-identity",
-        "tag": "2.3.1-e7c41a9",
-        "id": "c3d4e5f6a7b8",
-        "size_bytes": 365 * 1024 * 1024,
-    },
-    {
-        "repository": "nimbus-storefront",
-        "tag": "2.3.1",
-        "id": "d4e5f6a7b8c9",
-        "size_bytes": 520 * 1024 * 1024,
-    },
-]
-
-_DEMO_CHECKOUTS = [
-    {
-        "repo_id": "repo-nimbus-cart",
-        "repo_label": "NIMBUS/nimbus-cart",
-        "branch": "development",
-        "path": "repos/repo-nimbus-cart/development",
-        "size_bytes": 1_240 * 1024 * 1024,
-    },
-    {
-        "repo_id": "repo-nimbus-cart",
-        "repo_label": "NIMBUS/nimbus-cart",
-        "branch": "release/2.3.1",
-        "path": "repos/repo-nimbus-cart/release__2.3.1",
-        "size_bytes": 1_180 * 1024 * 1024,
-    },
-    {
-        "repo_id": "repo-nimbus-cart",
-        "repo_label": "NIMBUS/nimbus-cart",
-        "branch": "feature/promo-codes",
-        "path": "repos/repo-nimbus-cart/feature__promo-codes",
-        "size_bytes": 890 * 1024 * 1024,
-    },
-]
-
 
 def branch_dir_name(branch: str) -> str:
     """Filesystem-safe branch folder name."""
@@ -214,11 +162,11 @@ def _docker_images_real() -> Optional[List[Dict[str, Any]]]:
 
 
 def list_docker_images() -> Tuple[List[Dict[str, Any]], bool]:
-    """Returns (images, is_demo)."""
+    """Returns (images, is_demo). is_demo=True when docker CLI is missing."""
     real = _docker_images_real()
     if real is not None:
         return real, False
-    return [dict(r) for r in _DEMO_IMAGES], True
+    return [], True
 
 
 def get_storage_report(
@@ -229,18 +177,12 @@ def get_storage_report(
     root = ensure_data_dirs(data_dir=data_dir or settings.data_dir, settings=settings)
 
     checkouts = _scan_checkouts(root)
-    checkouts_demo = False
-    if not checkouts:
-        checkouts = [dict(c) for c in _DEMO_CHECKOUTS]
-        checkouts_demo = True
-
     checkout_total = sum(int(c["size_bytes"]) for c in checkouts)
 
     images, images_demo = list_docker_images()
     images_total = sum(int(i["size_bytes"]) for i in images)
 
-    real_checkouts = _scan_checkouts(root)
-    repos_bytes = sum(int(c["size_bytes"]) for c in real_checkouts)
+    repos_bytes = checkout_total
     artifacts_bytes = dir_size_bytes(root / "artifacts")
     db_path = Path(settings.database_path)
     db_bytes = db_path.stat().st_size if db_path.exists() else 0
@@ -261,7 +203,7 @@ def get_storage_report(
         "artifacts_bytes": artifacts_bytes,
         "database_bytes": db_bytes,
         "checkouts": checkouts,
-        "checkouts_demo": checkouts_demo,
+        "checkouts_demo": False,
         "checkouts_total_bytes": checkout_total,
         "images": images,
         "images_demo": images_demo,

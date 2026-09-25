@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell'
 import { ActivityPage } from './pages/ActivityPage'
 import { AddRepoPage } from './pages/AddRepoPage'
 import { HomePage } from './pages/HomePage'
+import { ImagesPage } from './pages/ImagesPage'
 import { JobLogPage } from './pages/JobLogPage'
 import { LoginPage } from './pages/LoginPage'
 import { ModuleDetailPage } from './pages/ModuleDetailPage'
@@ -51,6 +52,7 @@ export default function App() {
         />
         <Route path="/jobs/:jobId" element={<JobLogPage />} />
         <Route path="/activity" element={<ActivityPage />} />
+        <Route path="/images" element={<ImagesPage />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/isler/:jobId" element={<LegacyJobRedirect />} />

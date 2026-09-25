@@ -18,7 +18,6 @@ services:
       ISKELE_DATA_DIR: /var/lib/iskele
       ISKELE_DATABASE_PATH: /var/lib/iskele/iskele.db
       ISKELE_DOCKER_HOST: localhost
-      ISKELE_SEED_TESTER: "true"
     # Mount docker.sock later when real jobs are wired:
     # volumes:
     #   - /var/run/docker.sock:/var/run/docker.sock

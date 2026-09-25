@@ -1,25 +1,28 @@
 from __future__ import annotations
 
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.config import Settings, get_settings
-from app.data import demo
 from app.models.schemas import JobCreate, JobOut
 from app.services.executor import execute_action
+from app.services import store
+
+_run_lock = threading.Lock()
+_running = set()
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _save(job: JobOut) -> JobOut:
-    demo.JOBS[job.id] = job.model_dump()
-    return job
-
-
-def create_job(payload: JobCreate, settings: Optional[Settings] = None) -> JobOut:
+def create_job(
+    payload: JobCreate,
+    settings: Optional[Settings] = None,
+    created_by: Optional[int] = None,
+) -> JobOut:
     settings = settings or get_settings()
     job = JobOut(
         id="job-{0}".format(uuid.uuid4().hex[:8]),
@@ -31,67 +34,110 @@ def create_job(payload: JobCreate, settings: Optional[Settings] = None) -> JobOu
         image=payload.image,
         tag=payload.tag,
         remote=payload.remote,
+        archive_path=payload.archive_path,
         lines=[
-            "[iskele] module={0}".format(payload.module_id),
-            "[iskele] branch={0}".format(payload.branch),
+            "[iskele] module={0}".format(payload.module_id or "archive"),
+            "[iskele] branch={0}".format(payload.branch or "-"),
             "[iskele] action={0}".format(payload.action),
+            *(
+                ["[iskele] archive={0}".format(payload.archive_path)]
+                if payload.archive_path
+                else []
+            ),
             "[iskele] queued",
         ],
         error=None,
         created_at=_now(),
         finished_at=None,
     )
-    _save(job)
+    store.save_job(job, created_by=created_by)
     if settings.jobs_autorun:
-        return run_job(job.id, payload)
-    return job
+        _start_job(job.id, payload)
+    return store.get_job(job.id) or job
+
+
+def _start_job(job_id: str, payload: JobCreate) -> None:
+    thread = threading.Thread(
+        target=_run_safe,
+        args=(job_id, payload),
+        name="iskele-job-{0}".format(job_id),
+        daemon=True,
+    )
+    thread.start()
+
+
+def _run_safe(job_id: str, payload: JobCreate) -> None:
+    try:
+        run_job(job_id, payload)
+    except Exception as exc:
+        job = store.get_job(job_id)
+        if not job:
+            return
+        job.status = "failed"
+        job.error = str(exc)
+        job.finished_at = _now()
+        job.lines = list(job.lines) + ["[iskele] FAILED: {0}".format(exc)]
+        store.save_job(job)
 
 
 def run_job(job_id: str, payload: Optional[JobCreate] = None) -> JobOut:
-    raw = demo.JOBS.get(job_id)
-    if not raw:
+    job = store.get_job(job_id)
+    if not job:
         raise KeyError(job_id)
 
-    job = JobOut(**raw)
-    if payload is None:
-        payload = JobCreate(
-            repo_id=job.repo_id,
-            branch=job.branch,
-            module_id=job.module_id,
-            action=job.action,
-            image=job.image,
-            tag=job.tag,
-            remote=job.remote,
-        )
+    with _run_lock:
+        if job_id in _running:
+            return job
+        _running.add(job_id)
 
-    job.status = "running"
-    job.lines = list(job.lines) + ["[iskele] running"]
-    _save(job)
+    try:
+        if payload is None:
+            payload = JobCreate(
+                repo_id=job.repo_id,
+                branch=job.branch,
+                module_id=job.module_id,
+                action=job.action,
+                image=job.image,
+                tag=job.tag,
+                remote=job.remote,
+                archive_path=job.archive_path,
+            )
 
-    status, action_lines, error = execute_action(payload)
-    job.lines = list(job.lines) + list(action_lines)
-    job.status = status
-    job.error = error
-    job.finished_at = _now()
+        job.status = "running"
+        job.lines = list(job.lines) + ["[iskele] running"]
+        store.save_job(job)
 
-    if status == "failed" and error:
-        job.lines.append("[iskele] FAILED: {0}".format(error))
-    elif status == "success":
-        job.lines.append("[iskele] DONE")
+        def on_line(line: str) -> None:
+            current = store.get_job(job_id)
+            if not current:
+                return
+            current.lines = list(current.lines) + [line]
+            store.save_job(current)
 
-    return _save(job)
+        status, _action_lines, error = execute_action(payload, on_line=on_line)
+        job = store.get_job(job_id) or job
+        job.status = status
+        job.error = error
+        job.finished_at = _now()
+
+        if status == "failed" and error:
+            job.lines = list(job.lines) + ["[iskele] FAILED: {0}".format(error)]
+        elif status == "success":
+            job.lines = list(job.lines) + ["[iskele] DONE"]
+
+        return store.save_job(job)
+    finally:
+        with _run_lock:
+            _running.discard(job_id)
 
 
 def get_job(job_id: str) -> Optional[JobOut]:
-    raw = demo.JOBS.get(job_id)
-    return JobOut(**raw) if raw else None
+    return store.get_job(job_id)
 
 
 def list_jobs(limit: int = 20) -> List[JobOut]:
-    jobs = [JobOut(**raw) for raw in demo.JOBS.values()]
-    jobs.sort(key=lambda j: j.created_at, reverse=True)
-    return jobs[:limit]
+    return store.list_jobs(limit=limit)
 
 
 def clear_jobs() -> None:
-    demo.JOBS.clear()
+    store.clear_jobs()

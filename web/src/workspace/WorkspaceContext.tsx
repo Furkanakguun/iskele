@@ -24,6 +24,7 @@ export type AddRepoInput = {
   defaultBranch: string
   description?: string
   branches?: Branch[]
+  cloneUrl?: string
 }
 
 type WorkspaceContextValue = {
@@ -45,7 +46,7 @@ type WorkspaceContextValue = {
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
-const WS_KEY = 'iskele.workspace.v3'
+const WS_KEY = 'iskele.workspace.v4'
 
 type WsStored = { repoId: string; branch: string }
 
@@ -179,6 +180,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             name: input.name ?? '',
             default_branch: input.defaultBranch,
             description: input.description ?? '',
+            clone_url: input.cloneUrl ?? '',
             branches: (input.branches ?? []).map((b) => ({
               name: b.name,
               short_sha: b.shortSha,
@@ -277,6 +279,7 @@ export async function discoverRepo(
   token: string,
   projectKey: string,
   slug: string,
+  cloneUrl = '',
 ) {
   const data = await api<{
     project_key: string
@@ -284,8 +287,9 @@ export async function discoverRepo(
     name: string
     default_branch: string
     branches: ApiBranch[]
+    clone_url?: string
   }>(
-    `/api/repos/discover?project_key=${encodeURIComponent(projectKey)}&slug=${encodeURIComponent(slug)}`,
+    `/api/repos/discover?project_key=${encodeURIComponent(projectKey)}&slug=${encodeURIComponent(slug)}&clone_url=${encodeURIComponent(cloneUrl)}`,
     { token },
   )
   return {

@@ -26,7 +26,7 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=2)
     password: str = Field(..., min_length=4)
     display_name: str = ""
-    role: str = Field(..., pattern="^(admin|tester)$")
+    role: str = Field(..., pattern="^(admin|user)$")
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -68,6 +68,35 @@ def create_user(body: UserCreate, _: dict = Depends(require_admin)) -> UserOut:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return UserOut(**created)
+
+
+class UserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = Field(default=None, pattern="^(admin|user)$")
+    password: Optional[str] = Field(default=None, min_length=4)
+    is_active: Optional[bool] = None
+
+
+@users_router.patch("/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: int,
+    body: UserUpdate,
+    actor: dict = Depends(require_admin),
+) -> UserOut:
+    try:
+        updated = users_service.update_user(
+            user_id,
+            actor_id=int(actor["id"]),
+            display_name=body.display_name,
+            role=body.role,
+            password=body.password,
+            is_active=body.is_active,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return UserOut(**updated)
 
 
 @users_router.delete("/{user_id}", status_code=204)

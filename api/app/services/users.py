@@ -95,8 +95,8 @@ def create_user(
     username = username.strip()
     display_name = display_name.strip() or username
     role = role.strip().lower()
-    if role not in ("admin", "tester"):
-        raise ValueError("role must be admin or tester")
+    if role not in ("admin", "user"):
+        raise ValueError("role must be admin or user")
     if len(username) < 2:
         raise ValueError("username too short")
     if len(password) < 4:
@@ -119,7 +119,66 @@ def create_user(
     return user
 
 
-def delete_user(user_id: int, *, actor_id: int) -> None:
+def update_user(
+    user_id: int,
+    *,
+    actor_id: int,
+    display_name: Optional[str] = None,
+    role: Optional[str] = None,
+    password: Optional[str] = None,
+    is_active: Optional[bool] = None,
+) -> Dict[str, Any]:
+    target = get_user_by_id(user_id)
+    if not target:
+        raise LookupError("user not found")
+
+    new_role = target["role"]
+    if role is not None:
+        new_role = role.strip().lower()
+        if new_role not in ("admin", "user"):
+            raise ValueError("role must be admin or user")
+
+    new_active = target["is_active"] if is_active is None else bool(is_active)
+
+    if target["role"] == "admin" and (new_role != "admin" or not new_active):
+        admins = [u for u in list_users() if u["role"] == "admin" and u["is_active"]]
+        if len(admins) <= 1:
+            raise ValueError("cannot demote or disable the last admin")
+
+    if password is not None and password != "":
+        if len(password) < 4:
+            raise ValueError("password too short")
+
+    fields = []
+    values: List[Any] = []
+    if display_name is not None:
+        name = display_name.strip() or target["username"]
+        fields.append("display_name = ?")
+        values.append(name)
+    if role is not None:
+        fields.append("role = ?")
+        values.append(new_role)
+    if is_active is not None:
+        fields.append("is_active = ?")
+        values.append(1 if new_active else 0)
+    if password:
+        fields.append("password_hash = ?")
+        values.append(hash_password(password))
+    if not fields:
+        return target
+    values.append(user_id)
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET {0} WHERE id = ?".format(", ".join(fields)),
+            tuple(values),
+        )
+    updated = get_user_by_id(user_id)
+    if not updated:
+        raise RuntimeError("failed to update user")
+    return updated
+
+
+def delete_user(user_id: int, actor_id: int) -> None:
     target = get_user_by_id(user_id)
     if not target:
         raise LookupError("user not found")
@@ -143,12 +202,4 @@ def ensure_seed_users(settings: Optional[Settings] = None) -> None:
             settings.admin_password,
             settings.admin_display_name,
             "admin",
-        )
-
-    if settings.seed_tester and not get_user_by_username(settings.seed_tester_username):
-        create_user(
-            settings.seed_tester_username,
-            settings.seed_tester_password,
-            "Alex Tester",
-            "tester",
         )

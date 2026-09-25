@@ -1,24 +1,23 @@
-def test_docker_images_and_ps(client, auth_headers):
-    images = client.get("/api/docker/images", params={"grep": "catalog"}, headers=auth_headers)
+def test_docker_images_and_ps_empty(client, auth_headers):
+    images = client.get("/api/docker/images", headers=auth_headers)
     assert images.status_code == 200
-    body = images.json()
-    assert "grep" in body["command"]
-    assert "nimbus-catalog" in body["output"]
+    assert "docker images" in images.json()["command"]
 
     ps = client.get("/api/docker/ps", headers=auth_headers)
     assert ps.status_code == 200
-    assert "nimbus-cart" in ps.json()["output"]
+    assert "docker ps" in ps.json()["command"]
 
 
-def test_docker_running_urls(client, auth_headers):
+def test_docker_catalog_lists(client, auth_headers):
+    res = client.get("/api/docker/catalog", headers=auth_headers)
+    assert res.status_code == 200
+    assert isinstance(res.json(), list)
+
+
+def test_docker_running_lists(client, auth_headers):
     res = client.get("/api/docker/running", headers=auth_headers)
     assert res.status_code == 200
-    rows = res.json()
-    assert len(rows) >= 2
-    catalog = next(r for r in rows if r["name"] == "nimbus-catalog")
-    assert catalog["url"] == "http://localhost:31080"
-    storefront = next(r for r in rows if r["name"] == "nimbus-storefront")
-    assert storefront["url"].startswith("https://")
+    assert isinstance(res.json(), list)
 
 
 def test_parse_published_ports():

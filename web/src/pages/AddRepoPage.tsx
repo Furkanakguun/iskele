@@ -10,14 +10,17 @@ import {
 import type { Branch } from '../mock/data'
 
 type Step = 'form' | 'review'
+type SourceKind = 'workspace' | 'remote'
 
 export function AddRepoPage() {
   const { user } = useAuth()
   const { addRepo } = useWorkspace()
   const navigate = useNavigate()
 
-  const [projectKey, setProjectKey] = useState('NIMBUS')
+  const [sourceKind, setSourceKind] = useState<SourceKind>('workspace')
+  const [projectKey, setProjectKey] = useState('LOCAL')
   const [slug, setSlug] = useState('')
+  const [source, setSource] = useState('')
   const [step, setStep] = useState<Step>('form')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,19 +30,23 @@ export function AddRepoPage() {
     branches: Branch[]
   } | null>(null)
   const [defaultBranch, setDefaultBranch] = useState('development')
-  const [setActive, setSetActive] = useState(true)
 
   const field =
     'mt-1.5 w-full rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm outline-none focus:border-lime'
 
-  const canAdd = user?.role === 'admin' || user?.role === 'tester'
+  const canAdd = Boolean(user)
 
   async function onDiscover(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
-      const result = await discoverRepo(user!.token, projectKey, slug)
+      const result = await discoverRepo(
+        user!.token,
+        projectKey,
+        slug,
+        source.trim(),
+      )
       setDiscovered({
         name: result.name,
         defaultBranch: result.defaultBranch,
@@ -65,6 +72,7 @@ export function AddRepoPage() {
       defaultBranch,
       branches: discovered.branches,
       description: `Git ${projectKey.trim().toUpperCase()}/${slug.trim().toLowerCase()}`,
+      cloneUrl: source.trim(),
     }
     const result = await addRepo(input)
     setLoading(false)
@@ -72,11 +80,7 @@ export function AddRepoPage() {
       setError(result.error)
       return
     }
-    if (setActive) {
-      navigate(`/repos/${result.repo.id}`)
-    } else {
-      navigate('/repos')
-    }
+    navigate('/')
   }
 
   if (!canAdd) {
@@ -97,11 +101,10 @@ export function AddRepoPage() {
       </Link>
       <h2 className="mt-2 text-2xl font-semibold">Add repository</h2>
       <p className="mt-1 text-[13px] text-muted">
-        Connect with a Git server project key + slug. Branches come from
-        the discover API (demo data for now).
+        Use a local git folder, or a Git clone URL. Iskele copies into its own
+        volume.
       </p>
 
-      {/* steps */}
       <div className="mt-4 flex gap-2 font-mono text-[11px] text-muted">
         <span className={step === 'form' ? 'text-lime' : ''}>1. connect</span>
         <span>/</span>
@@ -118,14 +121,92 @@ export function AddRepoPage() {
 
       {step === 'form' && (
         <form onSubmit={onDiscover} className="card mt-5 space-y-4 p-5">
-          <label className="block text-[12px] text-muted">
-            Git server base URL
-            <input
-              className={`${field} text-muted`}
-              value="https://git.example.local"
-              disabled
-            />
-          </label>
+          <fieldset>
+            <legend className="text-[12px] text-muted">Source</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <label
+                className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${
+                  sourceKind === 'workspace'
+                    ? 'border-lime/50 bg-lime/10 text-text'
+                    : 'border-border text-muted'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sourceKind"
+                  className="mt-1 accent-[var(--color-lime)]"
+                  checked={sourceKind === 'workspace'}
+                  onChange={() => {
+                    setSourceKind('workspace')
+                    setSource('')
+                  }}
+                />
+                <span>
+                  <span className="block font-medium text-text">
+                    Local git folder
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    Existing git folder on this machine
+                  </span>
+                </span>
+              </label>
+              <label
+                className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${
+                  sourceKind === 'remote'
+                    ? 'border-lime/50 bg-lime/10 text-text'
+                    : 'border-border text-muted'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sourceKind"
+                  className="mt-1 accent-[var(--color-lime)]"
+                  checked={sourceKind === 'remote'}
+                  onChange={() => {
+                    setSourceKind('remote')
+                    setSource('')
+                    if (projectKey === 'LOCAL') setProjectKey('GIT')
+                  }}
+                />
+                <span>
+                  <span className="block font-medium text-text">
+                    Git clone URL
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    HTTPS or SSH clone URL
+                  </span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
+          {sourceKind === 'workspace' ? (
+            <label className="block text-[12px] text-muted">
+              Workspace path
+              <input
+                className={`${field} font-mono text-[12px]`}
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="C:\work\my-repo"
+                required
+              />
+            </label>
+          ) : (
+            <label className="block text-[12px] text-muted">
+              Clone URL
+              <input
+                className={`${field} font-mono text-[12px]`}
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="https://git.example.com/org/repo.git"
+                required
+              />
+              <span className="mt-1 block text-[11px]">
+                Private servers: set API token under Settings first.
+              </span>
+            </label>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-[12px] text-muted">
               Project key
@@ -133,7 +214,7 @@ export function AddRepoPage() {
                 className={`${field} font-mono uppercase`}
                 value={projectKey}
                 onChange={(e) => setProjectKey(e.target.value)}
-                placeholder="NIMBUS"
+                placeholder={sourceKind === 'workspace' ? 'LOCAL' : 'PROJ'}
                 required
               />
             </label>
@@ -143,17 +224,13 @@ export function AddRepoPage() {
                 className={`${field} font-mono`}
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="nimbus-cart"
+                placeholder="my-repo"
                 required
               />
             </label>
           </div>
-          <p className="text-[11px] text-muted">
-            Tip: use slug <code className="text-text">not-found</code> to see
-            the mock error.
-          </p>
           <Button type="submit" variant="primary" disabled={loading}>
-            {loading ? 'Discovering…' : 'Discover from Git server'}
+            {loading ? 'Discovering…' : 'Discover branches'}
           </Button>
         </form>
       )}
@@ -161,9 +238,12 @@ export function AddRepoPage() {
       {step === 'review' && discovered && (
         <form onSubmit={onConfirm} className="card mt-5 space-y-4 p-5">
           <div>
-            <p className="text-[11px] uppercase text-muted">Discovered</p>
+            <p className="text-[11px] uppercase text-muted">
+              {sourceKind === 'workspace' ? 'Workspace' : 'Clone URL'}
+            </p>
             <p className="mt-1 text-lg font-semibold">{discovered.name}</p>
-            <p className="font-mono text-[12px] text-muted">
+            <p className="break-all font-mono text-[12px] text-muted">{source}</p>
+            <p className="mt-1 font-mono text-[12px] text-muted">
               {projectKey.trim().toUpperCase()}/{slug.trim().toLowerCase()}
             </p>
           </div>
@@ -199,16 +279,6 @@ export function AddRepoPage() {
               ))}
             </ul>
           </div>
-
-          <label className="flex items-center gap-2 text-[13px] text-muted">
-            <input
-              type="checkbox"
-              checked={setActive}
-              onChange={(e) => setSetActive(e.target.checked)}
-              className="accent-[var(--color-lime)]"
-            />
-            Set as active repo after add
-          </label>
 
           <div className="flex flex-wrap gap-2">
             <Button type="submit" variant="primary">

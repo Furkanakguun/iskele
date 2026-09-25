@@ -7,8 +7,8 @@ import { IskeleLogo } from '../components/IskeleLogo'
 export function LoginPage() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('testci')
-  const [password, setPassword] = useState('testci')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -74,9 +74,6 @@ export function LoginPage() {
         >
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>
-        <p className="mt-3 text-center text-[11px] text-[#5a5a5a]">
-          admin/admin · testci/testci (seeded)
-        </p>
       </form>
     </div>
   )

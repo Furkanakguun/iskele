@@ -14,6 +14,7 @@ type JobOut = {
   repo_id: string
   branch: string
   module_id: string
+  archive_path?: string | null
   lines: string[]
   error: string | null
 }
@@ -27,19 +28,29 @@ export function JobLogPage() {
   const endRef = useRef<HTMLDivElement>(null)
 
   const action = (search.get('action') ?? 'build') as ModuleAction
-  const repoId = search.get('repoId') ?? 'repo-nimbus-cart'
-  const branch = search.get('branch') ?? 'development'
-  const moduleId = search.get('moduleId') ?? 'mod-cart'
+  const repoId = search.get('repoId') ?? ''
+  const branch = search.get('branch') ?? ''
+  const moduleId = search.get('moduleId') ?? ''
   const remote = search.get('remote')
   const tag = search.get('tag')
   const image = search.get('image')
+  const archive = search.get('archive') ?? ''
 
   const [mod, setMod] = useState<DockerModule | null>(null)
   const [job, setJob] = useState<JobOut | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const isWorkshop =
+    action === 'save' ||
+    action === 'load' ||
+    action.startsWith('prune-') ||
+    Boolean(archive) ||
+    Boolean(job?.archive_path) ||
+    job?.module_id === 'archive' ||
+    job?.module_id === 'catalog' ||
+    (job?.action ?? '').startsWith('prune-')
 
   useEffect(() => {
-    if (!user?.token) return
+    if (!user?.token || !repoId || !moduleId) return
     void (async () => {
       try {
         const row = await api<ApiModule>(
@@ -55,41 +66,40 @@ export function JobLogPage() {
 
   useEffect(() => {
     if (!user?.token) return
+    if (!isNew) return
 
     void (async () => {
       try {
-        if (isNew) {
-          const created = await api<JobOut>('/api/jobs', {
-            method: 'POST',
-            token: user.token,
-            body: JSON.stringify({
-              repo_id: repoId,
-              branch,
-              module_id: moduleId,
-              action,
-              image: image || undefined,
-              tag: tag || undefined,
-              remote: remote || undefined,
-            }),
-          })
-          setJob(created)
-          navigate(`/jobs/${created.id}`, { replace: true })
-          return
-        }
-
-        const loaded = await api<JobOut>(`/api/jobs/${jobId}`, {
+        const created = await api<JobOut>('/api/jobs', {
+          method: 'POST',
           token: user.token,
+          body: JSON.stringify({
+            repo_id: repoId || 'local',
+            branch: branch || '-',
+            module_id:
+              moduleId ||
+              (archive ||
+              action === 'save' ||
+              action === 'load' ||
+              action.startsWith('prune-')
+                ? 'catalog'
+                : ''),
+            action,
+            image: image || undefined,
+            tag: tag || undefined,
+            remote: remote || undefined,
+            archive_path: archive || undefined,
+          }),
         })
-        setJob(loaded)
-        setError(null)
+        setJob(created)
+        navigate(`/jobs/${created.id}`, { replace: true })
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Job failed to load')
+        setError(err instanceof Error ? err.message : 'Job failed to start')
       }
     })()
   }, [
     user?.token,
     isNew,
-    jobId,
     repoId,
     branch,
     moduleId,
@@ -97,8 +107,40 @@ export function JobLogPage() {
     image,
     tag,
     remote,
+    archive,
     navigate,
   ])
+
+  useEffect(() => {
+    if (!user?.token || isNew || !jobId) return
+    let cancelled = false
+    let timer: number | undefined
+
+    async function tick() {
+      try {
+        const loaded = await api<JobOut>(`/api/jobs/${jobId}`, {
+          token: user.token,
+        })
+        if (cancelled) return
+        setJob(loaded)
+        setError(null)
+        if (loaded.status === 'queued' || loaded.status === 'running') {
+          timer = window.setTimeout(() => {
+            void tick()
+          }, 700)
+        }
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Job failed to load')
+      }
+    }
+
+    void tick()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [user?.token, isNew, jobId])
 
   const lines = job?.lines ?? []
 
@@ -113,11 +155,13 @@ export function JobLogPage() {
         className="text-[13px] text-muted hover:text-text"
         onClick={() =>
           navigate(
-            `/repos/${repoId}/branches/${encodeURIComponent(branch)}/modules/${moduleId}`,
+            isWorkshop
+              ? '/images'
+              : `/repos/${repoId}/branches/${encodeURIComponent(branch)}/modules/${moduleId}`,
           )
         }
       >
-        ← {mod?.name ?? 'Module'}
+        ← {isWorkshop ? 'Images' : (mod?.name ?? 'Module')}
       </button>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -125,8 +169,10 @@ export function JobLogPage() {
           <h2 className="text-2xl font-semibold capitalize">
             {job?.action ?? action}
           </h2>
-          <p className="mt-1 text-[13px] text-muted">
-            {mod?.path ?? moduleId} · {branch}
+          <p className="mt-1 break-all text-[13px] text-muted">
+            {isWorkshop
+              ? archive || job?.archive_path || image || 'docker'
+              : `${mod?.path ?? moduleId} · ${branch}`}
           </p>
           {job?.error && (
             <p className="mt-2 text-[13px] text-danger">{job.error}</p>
@@ -158,15 +204,19 @@ export function JobLogPage() {
           variant="primary"
           onClick={() =>
             navigate(
-              `/repos/${repoId}/branches/${encodeURIComponent(branch)}/modules/${moduleId}`,
+              isWorkshop
+                ? '/images'
+                : `/repos/${repoId}/branches/${encodeURIComponent(branch)}/modules/${moduleId}`,
             )
           }
         >
-          Back to module
+          {isWorkshop ? 'Back to images' : 'Back to module'}
         </Button>
-        <Link to={`/repos/${repoId}/branches/${encodeURIComponent(branch)}`}>
-          <Button>Module list</Button>
-        </Link>
+        {!isWorkshop && (
+          <Link to={`/repos/${repoId}/branches/${encodeURIComponent(branch)}`}>
+            <Button>Module list</Button>
+          </Link>
+        )}
       </div>
     </div>
   )

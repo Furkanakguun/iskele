@@ -1,14 +1,14 @@
 def test_login_ok(client):
-    res = client.post("/api/auth/login", json={"username": "testci", "password": "testci"})
+    res = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
     assert res.status_code == 200
     body = res.json()
-    assert body["username"] == "testci"
-    assert body["role"] == "tester"
+    assert body["username"] == "admin"
+    assert body["role"] == "admin"
     assert body["access_token"]
 
 
 def test_login_bad_password(client):
-    res = client.post("/api/auth/login", json={"username": "testci", "password": "wrong"})
+    res = client.post("/api/auth/login", json={"username": "admin", "password": "wrong"})
     assert res.status_code == 401
 
 
@@ -20,18 +20,16 @@ def test_repos_requires_auth(client):
 def test_repos_with_token(client, auth_headers):
     res = client.get("/api/repos", headers=auth_headers)
     assert res.status_code == 200
-    repos = res.json()
-    assert len(repos) >= 1
-    assert repos[0]["slug"] == "nimbus-cart"
+    assert res.json() == []
 
 
 def test_me(client, auth_headers):
     res = client.get("/api/auth/me", headers=auth_headers)
     assert res.status_code == 200
-    assert res.json()["username"] == "testci"
+    assert res.json()["role"] == "user"
 
 
-def test_tester_cannot_create_user(client, auth_headers):
+def test_user_cannot_create_user(client, auth_headers):
     res = client.post(
         "/api/users",
         headers=auth_headers,
@@ -39,7 +37,7 @@ def test_tester_cannot_create_user(client, auth_headers):
             "username": "hacker",
             "password": "hack",
             "display_name": "Hacker",
-            "role": "tester",
+            "role": "user",
         },
     )
     assert res.status_code == 403
@@ -50,25 +48,50 @@ def test_admin_can_create_and_list_users(client, admin_headers):
         "/api/users",
         headers=admin_headers,
         json={
-            "username": "newtester",
+            "username": "builder",
             "password": "secret",
-            "display_name": "New Tester",
-            "role": "tester",
+            "display_name": "Builder",
+            "role": "user",
         },
     )
     assert created.status_code == 201
-    assert created.json()["username"] == "newtester"
+    assert created.json()["username"] == "builder"
+    assert created.json()["role"] == "user"
 
     listed = client.get("/api/users", headers=admin_headers)
     assert listed.status_code == 200
     names = {u["username"] for u in listed.json()}
     assert "admin" in names
-    assert "newtester" in names
+    assert "builder" in names
 
     login = client.post(
         "/api/auth/login",
-        json={"username": "newtester", "password": "secret"},
+        json={"username": "builder", "password": "secret"},
     )
+    assert login.status_code == 200
+
+
+def test_admin_can_edit_user(client, admin_headers):
+    created = client.post(
+        "/api/users",
+        headers=admin_headers,
+        json={
+            "username": "editme",
+            "password": "secret",
+            "display_name": "Edit Me",
+            "role": "user",
+        },
+    )
+    assert created.status_code == 201
+    uid = created.json()["id"]
+    patched = client.patch(
+        "/api/users/{0}".format(uid),
+        headers=admin_headers,
+        json={"display_name": "Edited", "role": "user", "password": "newer"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["display_name"] == "Edited"
+    login = client.post("/api/auth/login", json={"username": "editme", "password": "newer"})
     assert login.status_code == 200
 
 
@@ -76,12 +99,10 @@ def test_admin_cannot_delete_last_admin(client, admin_headers):
     users = client.get("/api/users", headers=admin_headers).json()
     admin = next(u for u in users if u["username"] == "admin")
     res = client.delete("/api/users/{0}".format(admin["id"]), headers=admin_headers)
-    # either cannot delete self or last admin
     assert res.status_code == 400
 
 
 def test_no_public_signup(client):
-    # There is no /api/auth/register
     res = client.post(
         "/api/auth/register",
         json={"username": "x", "password": "y"},

@@ -5,7 +5,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.auth import require_api_token
+from app.auth import require_api_token, require_user
 from app.config import get_settings
 from app.models.schemas import BranchOut, ModuleOut, RepoOut
 from app.services.git_client import GitClient
@@ -20,6 +20,7 @@ class RepoCreate(BaseModel):
     default_branch: str = "development"
     description: str = ""
     branches: List[dict] = []
+    clone_url: str = ""
 
 
 def _git() -> GitClient:
@@ -32,7 +33,9 @@ def list_repos(_: dict = Depends(require_api_token)) -> List[RepoOut]:
 
 
 @router.post("", response_model=RepoOut, status_code=201)
-def create_repo(body: RepoCreate, _: dict = Depends(require_api_token)) -> RepoOut:
+def create_repo(
+    body: RepoCreate, user: dict = Depends(require_user)
+) -> RepoOut:
     try:
         return _git().add_repo(
             body.project_key,
@@ -41,6 +44,8 @@ def create_repo(body: RepoCreate, _: dict = Depends(require_api_token)) -> RepoO
             body.default_branch,
             body.description,
             body.branches,
+            clone_url=body.clone_url,
+            created_by=int(user["id"]),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -50,13 +55,14 @@ def create_repo(body: RepoCreate, _: dict = Depends(require_api_token)) -> RepoO
 def discover(
     project_key: str = Query(..., min_length=1),
     slug: str = Query(..., min_length=1),
+    clone_url: str = Query(default=""),
     _: dict = Depends(require_api_token),
 ) -> dict:
     try:
-        return _git().discover(project_key, slug)
+        return _git().discover(project_key, slug, clone_url=clone_url)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -84,7 +90,10 @@ def list_modules(
     branch: str = Query(..., min_length=1),
     _: dict = Depends(require_api_token),
 ) -> List[ModuleOut]:
-    return _git().list_modules(repo_id, branch)
+    try:
+        return _git().list_modules(repo_id, branch)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{repo_id}/modules/{module_id}", response_model=ModuleOut)

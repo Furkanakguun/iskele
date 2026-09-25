@@ -5,6 +5,9 @@ from typing import List, Optional
 from app.config import Settings
 from app.data import demo
 from app.models.schemas import BranchOut, ModuleOut, RepoOut
+from app.services import git_local
+from app.services import store
+from app.services.app_settings import get_git_token
 
 
 def repo_id_from(project_key: str, slug: str) -> str:
@@ -20,13 +23,32 @@ class GitClient:
     def configured(self) -> bool:
         return bool(self.settings.git_base_url.strip())
 
+    def _token(self) -> str:
+        return get_git_token(self.settings)
+
     def list_repos(self) -> List[RepoOut]:
-        return list(demo.REPOS)
+        return store.list_repos()
 
     def list_branches(self, repo_id: str) -> List[BranchOut]:
+        source = store.get_clone_url(repo_id)
+        if source:
+            try:
+                return git_local.list_branches_from_source(source, token=self._token())
+            except Exception:
+                return list(demo.BRANCHES.get(repo_id, []))
         return list(demo.BRANCHES.get(repo_id, []))
 
     def list_modules(self, repo_id: str, branch: str) -> List[ModuleOut]:
+        source = store.get_clone_url(repo_id)
+        if source:
+            dest = git_local.ensure_checkout(
+                source,
+                repo_id,
+                branch,
+                data_dir=self.settings.data_dir,
+                token=self._token(),
+            )
+            return git_local.scan_modules(dest)
         return list(demo.MODULES.get("{0}:{1}".format(repo_id, branch), []))
 
     def get_module(
@@ -37,35 +59,26 @@ class GitClient:
                 return mod
         return None
 
-    def discover(self, project_key: str, slug: str) -> dict:
+    def discover(
+        self, project_key: str, slug: str, clone_url: str = ""
+    ) -> dict:
+        url = (clone_url or "").strip()
+        if url:
+            data = git_local.discover_from_source(url, token=self._token())
+            key = project_key.strip().upper() or "LOCAL"
+            s = slug.strip().lower() or data["name"].lower().replace(" ", "-")
+            return {
+                "project_key": key,
+                "slug": s,
+                "name": data["name"],
+                "default_branch": data["default_branch"],
+                "branches": data["branches"],
+                "clone_url": git_local.normalize_source(url),
+            }
+
         if not project_key.strip() or not slug.strip():
             raise ValueError("project_key and slug are required")
-        if slug.strip().lower() == "not-found":
-            raise LookupError("Git server: repo not found")
-        key = project_key.strip().upper()
-        s = slug.strip().lower()
-        return {
-            "project_key": key,
-            "slug": s,
-            "name": " ".join(part.capitalize() for part in s.split("-")),
-            "default_branch": "development",
-            "branches": [
-                {
-                    "name": "main",
-                    "short_sha": "e1a2b3c",
-                    "commit_message": "Initial import",
-                    "updated_at": "2026-09-21T00:00:00Z",
-                    "dockerfile_count": 2,
-                },
-                {
-                    "name": "development",
-                    "short_sha": "a9b8c7d",
-                    "commit_message": "Latest work",
-                    "updated_at": "2026-09-21T00:00:00Z",
-                    "dockerfile_count": 4,
-                },
-            ],
-        }
+        raise ValueError("clone_url is required (local git folder or git URL)")
 
     def add_repo(
         self,
@@ -75,13 +88,14 @@ class GitClient:
         default_branch: str,
         description: str,
         branches: List[dict],
+        clone_url: str = "",
+        created_by: int = 0,
     ) -> RepoOut:
+        if not created_by:
+            raise ValueError("created_by is required")
         key = project_key.strip().upper()
         s = slug.strip().lower()
         rid = repo_id_from(key, s)
-        if any(r.id == rid or (r.project_key == key and r.slug == s) for r in demo.REPOS):
-            raise ValueError("repo already exists")
-
         repo = RepoOut(
             id=rid,
             project_key=key,
@@ -100,28 +114,13 @@ class GitClient:
             )
             for b in branches
         ]
-        if not branch_models:
-            branch_models = [
-                BranchOut(
-                    name=repo.default_branch,
-                    short_sha="pending",
-                    commit_message="Not scanned yet",
-                    updated_at="2026-09-21T00:00:00Z",
-                    dockerfile_count=0,
-                )
-            ]
-
-        demo.REPOS.append(repo)
-        demo.BRANCHES[rid] = branch_models
-        return repo
+        if branch_models:
+            demo.BRANCHES[rid] = branch_models
+        url = git_local.normalize_source(clone_url) if clone_url.strip() else ""
+        return store.insert_repo(repo, created_by=created_by, clone_url=url)
 
     def remove_repo(self, repo_id: str) -> None:
-        if len(demo.REPOS) <= 1:
-            raise ValueError("cannot remove the last repo")
-        before = len(demo.REPOS)
-        demo.REPOS[:] = [r for r in demo.REPOS if r.id != repo_id]
-        if len(demo.REPOS) == before:
-            raise LookupError("repo not found")
+        store.delete_repo(repo_id)
         demo.BRANCHES.pop(repo_id, None)
         for key in list(demo.MODULES.keys()):
             if key.startswith(repo_id + ":"):

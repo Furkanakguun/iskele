@@ -23,6 +23,11 @@ export function ReposPage() {
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
+        {repos.length === 0 && (
+          <div className="card p-5 text-[13px] text-muted md:col-span-2">
+            No repositories yet. Add a local git folder to get started.
+          </div>
+        )}
         {repos.map((r) => {
           const branches = getBranches(r.id)
           const active = r.id === repo.id
@@ -52,6 +57,13 @@ export function ReposPage() {
               <p className="mt-3 text-[13px] text-muted">{r.description}</p>
               <p className="mt-3 text-[12px] text-muted">
                 Default: <span className="text-text">{r.defaultBranch}</span>
+                {r.createdByUsername ? (
+                  <>
+                    {' '}
+                    · added by{' '}
+                    <span className="text-text">{r.createdByUsername}</span>
+                  </>
+                ) : null}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {!active && (
@@ -62,7 +74,7 @@ export function ReposPage() {
                 <Link to={`/repos/${r.id}`}>
                   <Button variant="ghost">Branches</Button>
                 </Link>
-                {user?.role === 'admin' && repos.length > 1 && (
+                {user?.role === 'admin' && (
                   <Button variant="danger" onClick={() => removeRepo(r.id)}>
                     Remove
                   </Button>

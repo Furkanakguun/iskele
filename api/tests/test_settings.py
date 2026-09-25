@@ -3,14 +3,14 @@ def test_settings_requires_auth(client):
     assert res.status_code == 401
 
 
-def test_tester_can_read_settings(client, auth_headers):
+def test_user_can_read_settings(client, auth_headers):
     res = client.get("/api/settings", headers=auth_headers)
     assert res.status_code == 200
     assert "remote_registry" in res.json()
     assert "data_dir" in res.json()
 
 
-def test_tester_cannot_put_settings(client, auth_headers):
+def test_user_cannot_put_settings(client, auth_headers):
     res = client.put(
         "/api/settings",
         headers=auth_headers,
@@ -19,7 +19,7 @@ def test_tester_cannot_put_settings(client, auth_headers):
     assert res.status_code == 403
 
 
-def test_tester_can_read_storage(client, auth_headers):
+def test_user_can_read_storage(client, auth_headers):
     res = client.get("/api/settings/storage", headers=auth_headers)
     assert res.status_code == 200
     assert "disk_free_bytes" in res.json()
@@ -31,7 +31,7 @@ def test_settings_get_and_put(client, admin_headers):
     body = got.json()
     assert "git_base_url" in body
     assert body["git_token_set"] is False
-    assert body["remote_registry"]
+    assert "remote_registry" in body
     assert body["image_version"]
     assert body["data_dir"]
 
@@ -41,19 +41,19 @@ def test_settings_get_and_put(client, admin_headers):
         json={
             "git_base_url": "https://git.corp.local",
             "git_token": "secret-token",
-            "remote_registry": "registry.corp/nimbus",
+            "remote_registry": "registry.example.com/app",
             "image_version": "9.9.9",
-            "docker_host": "jenkins",
-            "image_prefix": "nimbus-",
+            "docker_host": "builder",
+            "image_prefix": "app-",
         },
     )
     assert updated.status_code == 200
     out = updated.json()
     assert out["git_base_url"] == "https://git.corp.local"
     assert out["git_token_set"] is True
-    assert out["remote_registry"] == "registry.corp/nimbus"
+    assert out["remote_registry"] == "registry.example.com/app"
     assert out["image_version"] == "9.9.9"
-    assert out["docker_host"] == "jenkins"
+    assert out["docker_host"] == "builder"
     assert "git_token" not in out
 
     # empty token keeps existing
@@ -76,9 +76,8 @@ def test_storage_report(client, admin_headers):
     assert "iskele_bytes" in body
     assert "checkouts" in body
     assert "images" in body
-    assert body["images_total_bytes"] > 0
-    # empty volume → demo checkout estimates
-    assert body["checkouts_demo"] is True
+    assert body["images_total_bytes"] >= 0
+    assert body["checkouts_demo"] is False
 
     # Create a real checkout folder and re-query
     data_dir = body["data_dir"]

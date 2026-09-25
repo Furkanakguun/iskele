@@ -30,10 +30,6 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin"
     admin_display_name: str = "Admin"
-    # Optional demo tester created on boot (dev only)
-    seed_tester: bool = True
-    seed_tester_username: str = "testci"
-    seed_tester_password: str = "testci"
 
 
 @lru_cache

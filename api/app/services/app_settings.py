@@ -6,9 +6,9 @@ from typing import Any, Dict, Optional
 from app.config import Settings, get_settings
 from app.db import get_connection, init_db
 
-DEFAULT_REMOTE = "registry.example.com/nimbus"
-DEFAULT_IMAGE_VERSION = "2.3.1"
-DEFAULT_IMAGE_PREFIX = "nimbus-"
+DEFAULT_REMOTE = ""
+DEFAULT_IMAGE_VERSION = "latest"
+DEFAULT_IMAGE_PREFIX = ""
 
 
 def _ensure_volume(data_dir: str) -> None:
@@ -22,7 +22,7 @@ def _seed_defaults(settings: Settings) -> None:
     init_db(settings.database_path)
     _ensure_volume(settings.data_dir)
     defaults = {
-        "git_base_url": settings.git_base_url or "https://git.example.local",
+        "git_base_url": settings.git_base_url or "",
         "git_token": settings.git_token or "",
         "docker_host": settings.docker_host or "localhost",
         "remote_registry": DEFAULT_REMOTE,
@@ -48,6 +48,12 @@ def _load_map(settings: Optional[Settings] = None) -> Dict[str, str]:
     with get_connection(settings.database_path) as conn:
         rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
     return {r["key"]: r["value"] for r in rows}
+
+
+def get_git_token(settings: Optional[Settings] = None) -> str:
+    settings = settings or get_settings()
+    data = _load_map(settings)
+    return (data.get("git_token") or settings.git_token or "").strip()
 
 
 def get_app_settings(settings: Optional[Settings] = None) -> Dict[str, Any]:

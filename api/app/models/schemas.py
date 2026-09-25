@@ -25,6 +25,10 @@ class RepoOut(BaseModel):
     name: str
     description: str
     default_branch: str
+    clone_url: str = ""
+    created_by: Optional[int] = None
+    created_by_username: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 class BranchOut(BaseModel):
@@ -51,13 +55,17 @@ class ModuleOut(BaseModel):
 
 
 class JobCreate(BaseModel):
-    repo_id: str
-    branch: str
-    module_id: str
-    action: str = Field(..., pattern="^(build|tar|zip|load|push)$")
+    repo_id: str = ""
+    branch: str = ""
+    module_id: str = ""
+    action: str = Field(
+        ...,
+        pattern="^(build|tar|zip|load|push|save|prune-dangling|prune-builder|prune-containers)$",
+    )
     image: Optional[str] = None
     tag: Optional[str] = None
     remote: Optional[str] = None
+    archive_path: Optional[str] = None
 
 
 class JobOut(BaseModel):
@@ -70,6 +78,7 @@ class JobOut(BaseModel):
     image: Optional[str] = None
     tag: Optional[str] = None
     remote: Optional[str] = None
+    archive_path: Optional[str] = None
     lines: List[str] = []
     error: Optional[str] = None
     created_at: str
@@ -77,6 +86,20 @@ class JobOut(BaseModel):
 
 
 class DockerCommandOut(BaseModel):
+    command: str
+    output: str
+
+
+class DockerImageRow(BaseModel):
+    repository: str
+    tag: str
+    id: str
+    size_bytes: int
+    ref: str
+
+
+class DockerRmiOut(BaseModel):
+    ok: bool
     command: str
     output: str
 

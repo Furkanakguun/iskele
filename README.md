@@ -6,10 +6,9 @@ Build, package, and push Docker images from Git repositories. Pick a branch, ope
 
 ![Module](docs/module.png)
 
-
 ## Data volume
 
-Iskele keeps checkouts on its **own** volume:
+Iskele keeps checkouts on its **own** volume (not a CI job workspace):
 
 ```
 $ISKELE_DATA_DIR/
@@ -18,7 +17,7 @@ $ISKELE_DATA_DIR/
   iskele.db                   # users + settings
 ```
 
-On Jenkins, mount a dedicated host path or named volume (see `docker-compose.yml`). Settings **Disk usage** shows Iskele footprint, per-branch checkout size, Docker image totals, and host free space.
+Add a repo with a local git folder or clone URL. Activity shows disk usage; Images can load, export, and prune leftover Docker data.
 
 ## License
 

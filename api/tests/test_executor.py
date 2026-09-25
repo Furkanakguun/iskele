@@ -1,19 +1,19 @@
-from app.services.executor import execute_action
 from app.models.schemas import JobCreate
+from app.services.executor import execute_action
 
 
-def test_push_success_lines():
+def test_unknown_module_fails_without_seed():
     status, lines, error = execute_action(
         JobCreate(
-            repo_id="repo-nimbus-cart",
-            branch="development",
-            module_id="mod-cart",
+            repo_id="repo-missing",
+            branch="main",
+            module_id="mod-x",
             action="push",
-            image="nimbus-cart",
-            tag="2.3.1",
-            remote="registry.example.com/nimbus",
+            image="x",
+            tag="1",
+            remote="registry.local",
         )
     )
-    assert status == "success"
-    assert error is None
-    assert any("Push OK" in line for line in lines)
+    assert status == "failed"
+    assert error
+    assert "not found" in error.lower()

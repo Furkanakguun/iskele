@@ -21,12 +21,12 @@ export type AppConfig = {
 }
 
 const DEFAULTS: AppConfig = {
-  git_base_url: 'https://git.example.local',
+  git_base_url: '',
   git_token_set: false,
   docker_host: 'localhost',
-  remote_registry: 'registry.example.com/nimbus',
-  image_version: '2.3.1',
-  image_prefix: 'nimbus-',
+  remote_registry: '',
+  image_version: 'latest',
+  image_prefix: '',
   data_dir: '',
 }
 

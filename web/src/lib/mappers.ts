@@ -7,6 +7,8 @@ export type ApiRepo = {
   name: string
   description: string
   default_branch: string
+  clone_url?: string
+  created_by_username?: string | null
 }
 
 export type ApiBranch = {
@@ -40,6 +42,7 @@ export function mapRepo(r: ApiRepo): Repo {
     name: r.name,
     description: r.description,
     defaultBranch: r.default_branch,
+    createdByUsername: r.created_by_username ?? undefined,
   }
 }
 
